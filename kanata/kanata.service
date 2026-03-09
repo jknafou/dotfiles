@@ -1,0 +1,12 @@
+[Unit]
+Description=Kanata keyboard remapper
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/kanata --cfg __HOME__/.config/kanata/kanata.kdb
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
