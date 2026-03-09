@@ -8,6 +8,7 @@
 #   cd ~/dotfiles
 #   ./install.sh              Install everything (except kanata)
 #   ./install.sh --mac        Install everything (including kanata)
+#   ./install.sh --hpc        Install everything without sudo (HPC/cluster)
 #   ./install.sh --nvim       Install only neovim
 #   ./install.sh --tmux       Install only tmux
 #   ./install.sh --terminal   Install only shell environment
@@ -25,6 +26,7 @@ INSTALL_NVIM=false
 INSTALL_TMUX=false
 INSTALL_KANATA=false
 INSTALL_TERMINAL=false
+HPC_MODE=false
 HAS_FLAGS=false
 
 # ─── Usage ───────────────────────────────────────────────────────────────────
@@ -35,6 +37,7 @@ Usage: ./install.sh [OPTIONS]
 
 Options:
   --mac        Install everything (including kanata)
+  --hpc        Install everything without sudo (HPC/cluster environments)
   --nvim       Neovim configuration
   --tmux       Tmux configuration and plugin manager
   --terminal   Zsh, Starship, fzf, and development tools
@@ -56,6 +59,13 @@ for arg in "$@"; do
             INSTALL_TMUX=true
             INSTALL_KANATA=true
             INSTALL_TERMINAL=true
+            HAS_FLAGS=true
+            ;;
+        --hpc)
+            INSTALL_NVIM=true
+            INSTALL_TMUX=true
+            INSTALL_TERMINAL=true
+            HPC_MODE=true
             HAS_FLAGS=true
             ;;
         --nvim)     INSTALL_NVIM=true;     HAS_FLAGS=true ;;
@@ -105,7 +115,10 @@ link_package() {
 }
 
 pkg_install() {
-    if command -v brew &>/dev/null; then
+    if $HPC_MODE; then
+        warn "Skipping system package install (HPC mode, no sudo): $*"
+        return 1
+    elif command -v brew &>/dev/null; then
         brew install "$@"
     elif command -v apt-get &>/dev/null; then
         sudo apt-get install -y "$@"
@@ -119,9 +132,87 @@ pkg_install() {
     fi
 }
 
+# ─── HPC helpers (no sudo, install to ~/.local) ───────────────────────────────
+
+LOCAL_BIN="$HOME/.local/bin"
+LOCAL_PREFIX="$HOME/.local"
+
+hpc_ensure_dirs() {
+    mkdir -p "$LOCAL_BIN" "$LOCAL_PREFIX"
+}
+
+hpc_install_stow() {
+    if command -v stow &>/dev/null; then return 0; fi
+    info "Installing stow from source (HPC)..."
+    local tmp
+    tmp=$(mktemp -d)
+    curl -sL https://ftp.gnu.org/gnu/stow/stow-2.4.1.tar.gz | tar xz -C "$tmp"
+    cd "$tmp/stow-2.4.1"
+    ./configure --prefix="$LOCAL_PREFIX"
+    make install
+    cd "$DOTFILES_DIR"
+    rm -rf "$tmp"
+}
+
+hpc_install_nvim() {
+    if command -v nvim &>/dev/null; then return 0; fi
+    info "Installing Neovim from prebuilt tarball (HPC)..."
+    local tmp
+    tmp=$(mktemp -d)
+    curl -sL https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.tar.gz | tar xz -C "$tmp"
+    rm -rf "$LOCAL_PREFIX/nvim-linux-x86_64"
+    mv "$tmp/nvim-linux-x86_64" "$LOCAL_PREFIX/"
+    ln -sf "$LOCAL_PREFIX/nvim-linux-x86_64/bin/nvim" "$LOCAL_BIN/nvim"
+    rm -rf "$tmp"
+}
+
+hpc_install_fd() {
+    if command -v fd &>/dev/null; then return 0; fi
+    info "Installing fd from GitHub release (HPC)..."
+    local tmp
+    tmp=$(mktemp -d)
+    local version
+    version=$(curl -sI https://github.com/sharkdp/fd/releases/latest | grep -i '^location:' | grep -oP 'v[\d.]+' | head -1)
+    curl -sL "https://github.com/sharkdp/fd/releases/download/${version}/fd-${version}-x86_64-unknown-linux-musl.tar.gz" | tar xz -C "$tmp"
+    cp "$tmp"/fd-*/fd "$LOCAL_BIN/"
+    rm -rf "$tmp"
+}
+
+hpc_install_rg() {
+    if command -v rg &>/dev/null; then return 0; fi
+    info "Installing ripgrep from GitHub release (HPC)..."
+    local tmp
+    tmp=$(mktemp -d)
+    local version
+    version=$(curl -sI https://github.com/BurntSushi/ripgrep/releases/latest | grep -i '^location:' | grep -oP '[\d.]+$' | head -1)
+    curl -sL "https://github.com/BurntSushi/ripgrep/releases/download/${version}/ripgrep-${version}-x86_64-unknown-linux-musl.tar.gz" | tar xz -C "$tmp"
+    cp "$tmp"/ripgrep-*/rg "$LOCAL_BIN/"
+    rm -rf "$tmp"
+}
+
+hpc_install_fzf() {
+    if command -v fzf &>/dev/null; then return 0; fi
+    info "Installing fzf (HPC)..."
+    git clone --depth 1 https://github.com/junegunn/fzf.git "$HOME/.fzf"
+    "$HOME/.fzf/install" --bin
+    ln -sf "$HOME/.fzf/bin/fzf" "$LOCAL_BIN/fzf"
+}
+
+hpc_install_starship() {
+    if command -v starship &>/dev/null; then return 0; fi
+    info "Installing Starship (HPC)..."
+    curl -sS https://starship.rs/install.sh | sh -s -- -y --bin-dir "$LOCAL_BIN"
+}
+
 # ─── Package manager ────────────────────────────────────────────────────────
 
-if [[ "$OS" == "Darwin" ]]; then
+if $HPC_MODE; then
+    info "HPC mode — installing without sudo to ~/.local"
+    hpc_ensure_dirs
+    export PATH="$LOCAL_BIN:$PATH"
+    hpc_install_stow
+    success "HPC prerequisites ready"
+elif [[ "$OS" == "Darwin" ]]; then
     if ! command -v brew &>/dev/null; then
         info "Installing Homebrew..."
         /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
@@ -132,26 +223,34 @@ else
     info "Detected Linux — using system package manager"
 fi
 
-if ! command -v stow &>/dev/null; then
-    info "Installing stow..."
-    pkg_install stow
-fi
+if ! $HPC_MODE; then
+    if ! command -v stow &>/dev/null; then
+        info "Installing stow..."
+        pkg_install stow
+    fi
 
-if ! command -v zsh &>/dev/null; then
-    info "Installing zsh..."
-    pkg_install zsh
-fi
+    if ! command -v zsh &>/dev/null; then
+        info "Installing zsh..."
+        pkg_install zsh
+    fi
 
-if ! command -v git &>/dev/null; then
-    info "Installing git..."
-    pkg_install git
+    if ! command -v git &>/dev/null; then
+        info "Installing git..."
+        pkg_install git
+    fi
 fi
 
 # ─── Neovim ──────────────────────────────────────────────────────────────────
 
 if $INSTALL_NVIM; then
     info "Installing neovim..."
-    pkg_install neovim ripgrep fd
+    if $HPC_MODE; then
+        hpc_install_nvim
+        hpc_install_rg
+        hpc_install_fd
+    else
+        pkg_install neovim ripgrep fd
+    fi
 
     backup_if_exists "$HOME/.config/nvim"
     link_package nvim
@@ -163,8 +262,12 @@ fi
 
 if $INSTALL_TMUX; then
     info "Installing tmux..."
-    pkg_install tmux
-    command -v brew &>/dev/null && brew install tmuxifier
+    if $HPC_MODE; then
+        command -v tmux &>/dev/null || warn "tmux not found — install it via your HPC admin or module system"
+    else
+        pkg_install tmux
+        command -v brew &>/dev/null && brew install tmuxifier
+    fi
 
     backup_if_exists "$HOME/.config/tmux"
     link_package tmux
@@ -183,7 +286,31 @@ fi
 if $INSTALL_TERMINAL; then
     info "Installing shell environment..."
 
-    if command -v brew &>/dev/null; then
+    if $HPC_MODE; then
+        hpc_install_fzf
+        hpc_install_fd
+        hpc_install_rg
+        hpc_install_starship
+        # pyenv via official installer
+        if ! command -v pyenv &>/dev/null; then
+            info "Installing pyenv (HPC)..."
+            curl -sS https://pyenv.run | bash
+        fi
+        # nvm via official installer
+        if [ ! -d "$HOME/.nvm" ]; then
+            info "Installing nvm (HPC)..."
+            curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+        fi
+        # Go via module system
+        if ! command -v go &>/dev/null; then
+            if type module &>/dev/null && module avail Go 2>&1 | grep -q Go; then
+                info "Loading Go via module system..."
+                module load Go
+            else
+                warn "Go not found — load it via module system or install manually"
+            fi
+        fi
+    elif command -v brew &>/dev/null; then
         brew install fzf fd ripgrep starship pyenv pyenv-virtualenv nvm node go
     else
         pkg_install fzf ripgrep
