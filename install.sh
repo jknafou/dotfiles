@@ -81,7 +81,15 @@ success() { printf "\033[1;32m::\033[0m %s\n" "$1"; }
 
 backup_if_exists() {
     local target="$1"
-    if [ -e "$target" ] && [ ! -L "$target" ]; then
+    if [ -L "$target" ]; then
+        # Symlink exists — remove if it doesn't point into our dotfiles
+        local link_target
+        link_target="$(readlink "$target")"
+        if [[ "$link_target" != *dotfiles* ]]; then
+            warn "Removing stale symlink $target → $link_target"
+            rm "$target"
+        fi
+    elif [ -e "$target" ]; then
         warn "Backing up $target → ${target}.bak"
         mv "$target" "${target}.bak"
     fi
@@ -90,7 +98,10 @@ backup_if_exists() {
 link_package() {
     local pkg="$1"; shift
     cd "$DOTFILES_DIR"
-    stow -v --target="$HOME" "$@" "$pkg"
+    # --adopt: if a target file exists, move it into the repo then symlink.
+    # We git checkout right after to restore our version.
+    stow -v --adopt --target="$HOME" "$@" "$pkg"
+    git -C "$DOTFILES_DIR" checkout -- "$pkg" 2>/dev/null || true
 }
 
 pkg_install() {
