@@ -1,2 +1,3 @@
 .DS_Store
 *.bak
+tmux/.config/tmux/plugins/

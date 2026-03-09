@@ -42,10 +42,13 @@ return {
 
         require("fidget").setup({})
         require("mason").setup()
-        require("mason-lspconfig").setup({
-            automatic_installation = true,  -- or false if you prefer manual installs
 
-            ensure_installed = {
+        -- On HPC (no sudo, LSPs installed via pip/go), skip Mason auto-install
+        local is_hpc = vim.fn.executable("srun") == 1
+        require("mason-lspconfig").setup({
+            automatic_installation = not is_hpc,
+
+            ensure_installed = is_hpc and {} or {
                 "lua_ls",
                 "rust_analyzer",
                 "gopls",
