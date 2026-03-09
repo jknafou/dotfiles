@@ -67,3 +67,6 @@ if [[ "$OSTYPE" == darwin* ]] && [ -d /opt/homebrew/opt/util-linux ]; then
     export PATH="/opt/homebrew/opt/util-linux/bin:$PATH"
     export PATH="/opt/homebrew/opt/util-linux/sbin:$PATH"
 fi
+
+# Machine-specific overrides (not tracked in dotfiles)
+[ -f "$HOME/.zshrc.local" ] && source "$HOME/.zshrc.local"
