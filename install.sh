@@ -16,6 +16,7 @@
 #   ./install.sh --moom       Install only Moom Classic
 #   ./install.sh --macos      Apply macOS defaults (Dock, Finder, keyboard, trackpad)
 #   ./install.sh --kanata     Install only kanata
+#   ./install.sh --check      Verify all dependencies are installed (dry run)
 #
 
 set -euo pipefail
@@ -33,6 +34,7 @@ INSTALL_WEZTERM=false
 INSTALL_MOOM=false
 INSTALL_BETTERDISPLAY=false
 INSTALL_MACOS=false
+CHECK_ONLY=false
 HPC_MODE=false
 HAS_FLAGS=false
 
@@ -53,6 +55,7 @@ Options:
   --betterdisplay  BetterDisplay configuration (macOS only)
   --macos      Apply macOS defaults (Dock, Finder, keyboard, trackpad)
   --kanata     Kanata keyboard remapper (macOS: LaunchDaemon, Linux: systemd)
+  --check      Verify all dependencies are installed (dry run, no changes)
   -h, --help   Show this help message
 
 Running without flags installs everything except kanata.
@@ -89,6 +92,7 @@ for arg in "$@"; do
         --moom)     INSTALL_MOOM=true;     HAS_FLAGS=true ;;
         --betterdisplay) INSTALL_BETTERDISPLAY=true; HAS_FLAGS=true ;;
         --macos)    INSTALL_MACOS=true;    HAS_FLAGS=true ;;
+        --check)    CHECK_ONLY=true;       HAS_FLAGS=true ;;
         --kanata)   INSTALL_KANATA=true;   HAS_FLAGS=true ;;
         --terminal) INSTALL_TERMINAL=true; INSTALL_WEZTERM=true; HAS_FLAGS=true ;;
         --help|-h)  usage ;;
@@ -100,6 +104,106 @@ if ! $HAS_FLAGS; then
     INSTALL_NVIM=true
     INSTALL_TMUX=true
     INSTALL_TERMINAL=true
+fi
+
+# ─── Dependency check (--check) ──────────────────────────────────────────────
+
+if $CHECK_ONLY; then
+    missing=0
+    check_cmd() {
+        if command -v "$1" &>/dev/null; then
+            printf "  \033[1;32m✓\033[0m %s\n" "$1"
+        else
+            printf "  \033[1;31m✗\033[0m %s\n" "$1"
+            missing=$((missing + 1))
+        fi
+    }
+    check_dir() {
+        if [ -d "$2" ]; then
+            printf "  \033[1;32m✓\033[0m %s\n" "$1"
+        else
+            printf "  \033[1;31m✗\033[0m %s\n" "$1"
+            missing=$((missing + 1))
+        fi
+    }
+    check_app() {
+        if ls /Applications/"$1"* &>/dev/null; then
+            printf "  \033[1;32m✓\033[0m %s\n" "$1"
+        else
+            printf "  \033[1;31m✗\033[0m %s\n" "$1"
+            missing=$((missing + 1))
+        fi
+    }
+
+    echo
+    info "Core tools"
+    check_cmd brew
+    check_cmd git
+    check_cmd stow
+    check_cmd zsh
+
+    info "Terminal & shell"
+    check_cmd fzf
+    check_cmd fd
+    check_cmd rg
+    check_cmd starship
+    check_cmd bat
+    check_cmd tree
+    check_cmd htop
+    check_cmd wget
+    check_cmd gh
+    check_cmd lazygit
+    check_dir "Oh My Zsh" "$HOME/.oh-my-zsh"
+
+    info "Editors"
+    check_cmd nvim
+    check_cmd tmux
+    check_cmd tmuxifier
+    check_dir "TPM" "$HOME/.tmux/plugins/tpm"
+
+    info "Languages & version managers"
+    check_cmd go
+    check_cmd node
+    check_cmd pyenv
+    check_cmd pipx
+    check_dir "nvm" "$HOME/.nvm"
+
+    if [[ "$OS" == "Darwin" ]]; then
+        info "macOS apps"
+        check_app "WezTerm"
+        check_app "Moom"
+        check_app "BetterDisplay"
+        check_app "Karabiner"
+
+        info "macOS services"
+        if ps aux | grep -q '[k]anata'; then
+            printf "  \033[1;32m✓\033[0m kanata (running)\n"
+        else
+            printf "  \033[1;31m✗\033[0m kanata (not running)\n"
+            missing=$((missing + 1))
+        fi
+    fi
+
+    info "Symlinks"
+    for link in ~/.config/nvim ~/.config/tmux ~/.config/starship.toml ~/.zshrc ~/.config/kanata ~/.config/wezterm; do
+        name="$(basename "$link")"
+        if [ -L "$link" ] && [[ "$(readlink "$link")" == *dotfiles* ]]; then
+            printf "  \033[1;32m✓\033[0m %s → dotfiles\n" "$name"
+        elif [ -e "$link" ]; then
+            printf "  \033[1;33m~\033[0m %s (exists but not linked to dotfiles)\n" "$name"
+        else
+            printf "  \033[1;31m✗\033[0m %s (missing)\n" "$name"
+            missing=$((missing + 1))
+        fi
+    done
+
+    echo
+    if [ "$missing" -eq 0 ]; then
+        success "All dependencies are installed!"
+    else
+        warn "$missing missing — run ./install.sh --mac to install everything"
+    fi
+    exit 0
 fi
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -237,7 +341,14 @@ elif [[ "$OS" == "Darwin" ]]; then
         /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
         eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv)"
     fi
-    success "Homebrew ready"
+
+    # Install all formulae and casks from Brewfile
+    if [ -f "$DOTFILES_DIR/macos/Brewfile" ]; then
+        info "Installing packages from Brewfile..."
+        brew bundle --file="$DOTFILES_DIR/macos/Brewfile" --no-lock --no-upgrade
+    fi
+
+    success "Homebrew ready — all packages installed"
 else
     info "Detected Linux — using system package manager"
 fi

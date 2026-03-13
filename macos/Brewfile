@@ -1,0 +1,37 @@
+# Core tools (installed by all modes)
+brew "git"
+brew "stow"
+
+# Terminal & shell
+brew "fzf"
+brew "fd"
+brew "ripgrep"
+brew "starship"
+brew "bat"
+brew "tree"
+brew "htop"
+brew "wget"
+brew "gh"
+brew "lazygit"
+
+# Editors
+brew "neovim"
+brew "tmux"
+brew "tmuxifier"
+
+# Languages & version managers
+brew "go"
+brew "pyenv"
+brew "pyenv-virtualenv"
+brew "nvm"
+brew "node"
+brew "pipx"
+
+# Keyboard
+brew "kanata"
+
+# Casks (macOS GUI apps)
+cask "wezterm"
+cask "betterdisplay"
+cask "moom"
+cask "karabiner-elements"
