@@ -700,30 +700,48 @@ if $INSTALL_KANATA; then
         if ! files_identical "$DOTFILES_DIR/kanata/com.jknafou.kanata-watcher.plist" "$WATCHER_DST"; then
             KANATA_NEEDS_RELOAD=true
         fi
+        # Also reload if the .kdb config changed (symlink target vs repo)
+        if [ -L "$HOME/.config/kanata/kanata.kdb" ]; then
+            if ! files_identical "$DOTFILES_DIR/kanata/.config/kanata/kanata.kdb" "$HOME/.config/kanata/kanata.kdb"; then
+                KANATA_NEEDS_RELOAD=true
+            fi
+        else
+            KANATA_NEEDS_RELOAD=true
+        fi
 
         if $KANATA_NEEDS_RELOAD; then
             info "Installing LaunchDaemons (requires sudo)..."
             sudo mkdir -p /Library/Logs/Kanata
-            sudo cp "$PLIST_TMP" "$PLIST_DST"
-            sudo chown root:wheel "$PLIST_DST"
-            sudo chmod 644 "$PLIST_DST"
 
-            if sudo launchctl list | grep -q com.jknafou.kanata; then
-                sudo launchctl unload "$PLIST_DST" 2>/dev/null || true
+            # Only reload plists if they changed
+            if ! files_identical "$PLIST_TMP" "$PLIST_DST"; then
+                sudo cp "$PLIST_TMP" "$PLIST_DST"
+                sudo chown root:wheel "$PLIST_DST"
+                sudo chmod 644 "$PLIST_DST"
+                if sudo launchctl list | grep -q com.jknafou.kanata; then
+                    sudo launchctl unload "$PLIST_DST" 2>/dev/null || true
+                fi
+                sudo launchctl load "$PLIST_DST"
             fi
-            sudo launchctl load "$PLIST_DST"
 
-            # Watcher: restarts kanata when keyboards are connected/disconnected
-            sudo cp "$DOTFILES_DIR/kanata/com.jknafou.kanata-watcher.plist" "$WATCHER_DST"
-            sudo chown root:wheel "$WATCHER_DST"
-            sudo chmod 644 "$WATCHER_DST"
-
-            if sudo launchctl list | grep -q com.jknafou.kanata-watcher; then
-                sudo launchctl unload "$WATCHER_DST" 2>/dev/null || true
+            if ! files_identical "$DOTFILES_DIR/kanata/com.jknafou.kanata-watcher.plist" "$WATCHER_DST"; then
+                sudo cp "$DOTFILES_DIR/kanata/com.jknafou.kanata-watcher.plist" "$WATCHER_DST"
+                sudo chown root:wheel "$WATCHER_DST"
+                sudo chmod 644 "$WATCHER_DST"
+                if sudo launchctl list | grep -q com.jknafou.kanata-watcher; then
+                    sudo launchctl unload "$WATCHER_DST" 2>/dev/null || true
+                fi
+                sudo launchctl load "$WATCHER_DST"
             fi
-            sudo launchctl load "$WATCHER_DST"
 
-            success "Kanata ready — LaunchDaemons reloaded"
+            # If only the .kdb config changed, just signal kanata to restart
+            # (KeepAlive will relaunch it with the new config)
+            if ps aux | grep -q '[k]anata'; then
+                info "Restarting kanata to pick up config changes..."
+                sudo pkill -x kanata
+            fi
+
+            success "Kanata ready — reloaded"
         else
             success "Kanata — already up to date (skipping reload)"
         fi
