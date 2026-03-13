@@ -13,6 +13,7 @@
 #   ./install.sh --tmux       Install only tmux
 #   ./install.sh --terminal   Install only shell environment
 #   ./install.sh --wezterm    Install only wezterm
+#   ./install.sh --moom       Install only Moom Classic
 #   ./install.sh --kanata     Install only kanata
 #
 
@@ -28,6 +29,7 @@ INSTALL_TMUX=false
 INSTALL_KANATA=false
 INSTALL_TERMINAL=false
 INSTALL_WEZTERM=false
+INSTALL_MOOM=false
 HPC_MODE=false
 HAS_FLAGS=false
 
@@ -44,6 +46,7 @@ Options:
   --tmux       Tmux configuration and plugin manager
   --terminal   Zsh, Starship, fzf, and development tools
   --wezterm    WezTerm terminal emulator configuration (macOS only)
+  --moom       Moom Classic window manager presets (macOS only)
   --kanata     Kanata keyboard remapper (macOS: LaunchDaemon, Linux: systemd)
   -h, --help   Show this help message
 
@@ -63,6 +66,7 @@ for arg in "$@"; do
             INSTALL_KANATA=true
             INSTALL_TERMINAL=true
             INSTALL_WEZTERM=true
+            INSTALL_MOOM=true
             HAS_FLAGS=true
             ;;
         --hpc)
@@ -75,6 +79,7 @@ for arg in "$@"; do
         --nvim)     INSTALL_NVIM=true;     HAS_FLAGS=true ;;
         --tmux)     INSTALL_TMUX=true;     HAS_FLAGS=true ;;
         --wezterm)  INSTALL_WEZTERM=true;  HAS_FLAGS=true ;;
+        --moom)     INSTALL_MOOM=true;     HAS_FLAGS=true ;;
         --kanata)   INSTALL_KANATA=true;   HAS_FLAGS=true ;;
         --terminal) INSTALL_TERMINAL=true; INSTALL_WEZTERM=true; HAS_FLAGS=true ;;
         --help|-h)  usage ;;
@@ -433,6 +438,30 @@ if $INSTALL_WEZTERM; then
     link_package wezterm
 
     success "WezTerm ready"
+fi
+
+# ─── Moom Classic ────────────────────────────────────────────────────────────
+
+if $INSTALL_MOOM; then
+    if [[ "$OS" != "Darwin" ]]; then
+        warn "Moom Classic is macOS only — skipping"
+    else
+        info "Installing Moom Classic presets..."
+
+        if ! ls /Applications/Moom* &>/dev/null; then
+            brew install --cask moom
+        fi
+
+        # Quit Moom before importing (it caches prefs in memory)
+        killall "Moom Classic" 2>/dev/null || killall Moom 2>/dev/null || true
+
+        defaults import com.manytricks.Moom "$DOTFILES_DIR/moom/com.manytricks.Moom.plist"
+
+        # Relaunch Moom
+        open -a "Moom Classic" 2>/dev/null || open -a "Moom" 2>/dev/null || true
+
+        success "Moom Classic ready — all presets restored"
+    fi
 fi
 
 # ─── Kanata ──────────────────────────────────────────────────────────────────
