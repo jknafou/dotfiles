@@ -12,6 +12,7 @@
 #   ./install.sh --nvim       Install only neovim
 #   ./install.sh --tmux       Install only tmux
 #   ./install.sh --terminal   Install only shell environment
+#   ./install.sh --wezterm    Install only wezterm
 #   ./install.sh --kanata     Install only kanata
 #
 
@@ -26,6 +27,7 @@ INSTALL_NVIM=false
 INSTALL_TMUX=false
 INSTALL_KANATA=false
 INSTALL_TERMINAL=false
+INSTALL_WEZTERM=false
 HPC_MODE=false
 HAS_FLAGS=false
 
@@ -41,6 +43,7 @@ Options:
   --nvim       Neovim configuration
   --tmux       Tmux configuration and plugin manager
   --terminal   Zsh, Starship, fzf, and development tools
+  --wezterm    WezTerm terminal emulator configuration (macOS only)
   --kanata     Kanata keyboard remapper (macOS: LaunchDaemon, Linux: systemd)
   -h, --help   Show this help message
 
@@ -59,6 +62,7 @@ for arg in "$@"; do
             INSTALL_TMUX=true
             INSTALL_KANATA=true
             INSTALL_TERMINAL=true
+            INSTALL_WEZTERM=true
             HAS_FLAGS=true
             ;;
         --hpc)
@@ -70,8 +74,9 @@ for arg in "$@"; do
             ;;
         --nvim)     INSTALL_NVIM=true;     HAS_FLAGS=true ;;
         --tmux)     INSTALL_TMUX=true;     HAS_FLAGS=true ;;
+        --wezterm)  INSTALL_WEZTERM=true;  HAS_FLAGS=true ;;
         --kanata)   INSTALL_KANATA=true;   HAS_FLAGS=true ;;
-        --terminal) INSTALL_TERMINAL=true; HAS_FLAGS=true ;;
+        --terminal) INSTALL_TERMINAL=true; INSTALL_WEZTERM=true; HAS_FLAGS=true ;;
         --help|-h)  usage ;;
         *)          echo "Unknown option: $arg"; echo; usage ;;
     esac
@@ -409,6 +414,25 @@ ZSHLOCAL
     fi
 
     success "Terminal ready"
+fi
+
+# ─── WezTerm ────────────────────────────────────────────────────────────────
+
+if $INSTALL_WEZTERM; then
+    info "Installing WezTerm configuration..."
+
+    if [[ "$OS" == "Darwin" ]]; then
+        if ! command -v wezterm &>/dev/null; then
+            brew install --cask wezterm
+        fi
+    else
+        warn "WezTerm install is macOS only — skipping binary install on Linux"
+    fi
+
+    backup_if_exists "$HOME/.config/wezterm"
+    link_package wezterm
+
+    success "WezTerm ready"
 fi
 
 # ─── Kanata ──────────────────────────────────────────────────────────────────
