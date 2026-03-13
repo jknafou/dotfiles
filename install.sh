@@ -243,6 +243,26 @@ link_package() {
     git -C "$DOTFILES_DIR" checkout -- "$pkg" 2>/dev/null || true
 }
 
+# Compare two files; returns 0 (true) if identical or both missing
+files_identical() {
+    if [ ! -f "$1" ] || [ ! -f "$2" ]; then
+        return 1
+    fi
+    cmp -s "$1" "$2"
+}
+
+# Compare a defaults domain against a saved plist; returns 0 if identical
+defaults_identical() {
+    local domain="$1" saved="$2"
+    local tmp
+    tmp=$(mktemp)
+    defaults export "$domain" "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
+    cmp -s "$tmp" "$saved"
+    local rc=$?
+    rm -f "$tmp"
+    return $rc
+}
+
 pkg_install() {
     if $HPC_MODE; then
         warn "Skipping system package install (HPC mode, no sudo): $*"
@@ -572,21 +592,20 @@ if $INSTALL_MOOM; then
     if [[ "$OS" != "Darwin" ]]; then
         warn "Moom Classic is macOS only — skipping"
     else
-        info "Installing Moom Classic presets..."
-
         if ! ls /Applications/Moom* &>/dev/null; then
+            info "Installing Moom Classic..."
             brew install --cask moom
         fi
 
-        # Quit Moom before importing (it caches prefs in memory)
-        killall "Moom Classic" 2>/dev/null || killall Moom 2>/dev/null || true
-
-        defaults import com.manytricks.Moom "$DOTFILES_DIR/moom/com.manytricks.Moom.plist"
-
-        # Relaunch Moom
-        open -a "Moom Classic" 2>/dev/null || open -a "Moom" 2>/dev/null || true
-
-        success "Moom Classic ready — all presets restored"
+        if defaults_identical com.manytricks.Moom "$DOTFILES_DIR/moom/com.manytricks.Moom.plist"; then
+            success "Moom Classic — already up to date (skipping restart)"
+        else
+            info "Importing Moom Classic presets..."
+            killall "Moom Classic" 2>/dev/null || killall Moom 2>/dev/null || true
+            defaults import com.manytricks.Moom "$DOTFILES_DIR/moom/com.manytricks.Moom.plist"
+            open -a "Moom Classic" 2>/dev/null || open -a "Moom" 2>/dev/null || true
+            success "Moom Classic ready — presets restored"
+        fi
     fi
 fi
 
@@ -596,19 +615,20 @@ if $INSTALL_BETTERDISPLAY; then
     if [[ "$OS" != "Darwin" ]]; then
         warn "BetterDisplay is macOS only — skipping"
     else
-        info "Installing BetterDisplay configuration..."
-
         if ! ls /Applications/BetterDisplay* &>/dev/null; then
+            info "Installing BetterDisplay..."
             brew install --cask betterdisplay
         fi
 
-        killall BetterDisplay 2>/dev/null || true
-
-        defaults import pro.betterdisplay.BetterDisplay "$DOTFILES_DIR/betterdisplay/pro.betterdisplay.BetterDisplay.plist"
-
-        open -a "BetterDisplay" 2>/dev/null || true
-
-        success "BetterDisplay ready — configuration restored"
+        if defaults_identical pro.betterdisplay.BetterDisplay "$DOTFILES_DIR/betterdisplay/pro.betterdisplay.BetterDisplay.plist"; then
+            success "BetterDisplay — already up to date (skipping restart)"
+        else
+            info "Importing BetterDisplay configuration..."
+            killall BetterDisplay 2>/dev/null || true
+            defaults import pro.betterdisplay.BetterDisplay "$DOTFILES_DIR/betterdisplay/pro.betterdisplay.BetterDisplay.plist"
+            open -a "BetterDisplay" 2>/dev/null || true
+            success "BetterDisplay ready — configuration restored"
+        fi
     fi
 fi
 
@@ -618,27 +638,27 @@ if $INSTALL_LOGI; then
     if [[ "$OS" != "Darwin" ]]; then
         warn "Logi Options+ is macOS only — skipping"
     else
-        info "Restoring Logi Options+ configuration..."
-
         if ! ls /Applications/logioptionsplus* &>/dev/null; then
+            info "Installing Logi Options+..."
             brew install --cask logi-options+
         fi
 
         LOGI_DIR="$HOME/Library/Application Support/LogiOptionsPlus"
-
-        # Quit Logi Options+ before restoring
-        killall "logioptionsplus" 2>/dev/null || true
-        killall "LogiOptionsPlus" 2>/dev/null || true
-        sleep 1
-
         mkdir -p "$LOGI_DIR"
-        cp "$DOTFILES_DIR/logioptionsplus/settings.db" "$LOGI_DIR/settings.db"
-        cp "$DOTFILES_DIR/logioptionsplus/macros.db" "$LOGI_DIR/macros.db"
 
-        # Relaunch
-        open -a "logioptionsplus" 2>/dev/null || true
-
-        success "Logi Options+ ready — mouse config restored"
+        if files_identical "$DOTFILES_DIR/logioptionsplus/settings.db" "$LOGI_DIR/settings.db" \
+        && files_identical "$DOTFILES_DIR/logioptionsplus/macros.db" "$LOGI_DIR/macros.db"; then
+            success "Logi Options+ — already up to date (skipping restart)"
+        else
+            info "Restoring Logi Options+ configuration..."
+            killall "logioptionsplus" 2>/dev/null || true
+            killall "LogiOptionsPlus" 2>/dev/null || true
+            sleep 1
+            cp "$DOTFILES_DIR/logioptionsplus/settings.db" "$LOGI_DIR/settings.db"
+            cp "$DOTFILES_DIR/logioptionsplus/macros.db" "$LOGI_DIR/macros.db"
+            open -a "logioptionsplus" 2>/dev/null || true
+            success "Logi Options+ ready — mouse config restored"
+        fi
     fi
 fi
 
@@ -669,34 +689,46 @@ if $INSTALL_KANATA; then
         PLIST_SRC="$DOTFILES_DIR/kanata/com.jknafou.kanata.plist"
         PLIST_DST="/Library/LaunchDaemons/com.jknafou.kanata.plist"
         PLIST_TMP=$(mktemp)
+        WATCHER_DST="/Library/LaunchDaemons/com.jknafou.kanata-watcher.plist"
 
         sed "s|__HOME__|$HOME|g" "$PLIST_SRC" > "$PLIST_TMP"
 
-        info "Installing LaunchDaemon (requires sudo)..."
-        sudo mkdir -p /Library/Logs/Kanata
-        sudo cp "$PLIST_TMP" "$PLIST_DST"
-        sudo chown root:wheel "$PLIST_DST"
-        sudo chmod 644 "$PLIST_DST"
-        rm "$PLIST_TMP"
-
-        if sudo launchctl list | grep -q com.jknafou.kanata; then
-            sudo launchctl unload "$PLIST_DST" 2>/dev/null || true
+        KANATA_NEEDS_RELOAD=false
+        if ! files_identical "$PLIST_TMP" "$PLIST_DST"; then
+            KANATA_NEEDS_RELOAD=true
         fi
-        sudo launchctl load "$PLIST_DST"
-
-        # Watcher: restarts kanata when keyboards are connected/disconnected
-        WATCHER_DST="/Library/LaunchDaemons/com.jknafou.kanata-watcher.plist"
-        info "Installing kanata-watcher LaunchDaemon..."
-        sudo cp "$DOTFILES_DIR/kanata/com.jknafou.kanata-watcher.plist" "$WATCHER_DST"
-        sudo chown root:wheel "$WATCHER_DST"
-        sudo chmod 644 "$WATCHER_DST"
-
-        if sudo launchctl list | grep -q com.jknafou.kanata-watcher; then
-            sudo launchctl unload "$WATCHER_DST" 2>/dev/null || true
+        if ! files_identical "$DOTFILES_DIR/kanata/com.jknafou.kanata-watcher.plist" "$WATCHER_DST"; then
+            KANATA_NEEDS_RELOAD=true
         fi
-        sudo launchctl load "$WATCHER_DST"
 
-        success "Kanata ready — LaunchDaemon running (with keyboard hot-plug watcher)"
+        if $KANATA_NEEDS_RELOAD; then
+            info "Installing LaunchDaemons (requires sudo)..."
+            sudo mkdir -p /Library/Logs/Kanata
+            sudo cp "$PLIST_TMP" "$PLIST_DST"
+            sudo chown root:wheel "$PLIST_DST"
+            sudo chmod 644 "$PLIST_DST"
+
+            if sudo launchctl list | grep -q com.jknafou.kanata; then
+                sudo launchctl unload "$PLIST_DST" 2>/dev/null || true
+            fi
+            sudo launchctl load "$PLIST_DST"
+
+            # Watcher: restarts kanata when keyboards are connected/disconnected
+            sudo cp "$DOTFILES_DIR/kanata/com.jknafou.kanata-watcher.plist" "$WATCHER_DST"
+            sudo chown root:wheel "$WATCHER_DST"
+            sudo chmod 644 "$WATCHER_DST"
+
+            if sudo launchctl list | grep -q com.jknafou.kanata-watcher; then
+                sudo launchctl unload "$WATCHER_DST" 2>/dev/null || true
+            fi
+            sudo launchctl load "$WATCHER_DST"
+
+            success "Kanata ready — LaunchDaemons reloaded"
+        else
+            success "Kanata — already up to date (skipping reload)"
+        fi
+
+        rm -f "$PLIST_TMP"
 
     else
         # Linux: install kanata from cargo or package manager
