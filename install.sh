@@ -14,6 +14,7 @@
 #   ./install.sh --terminal   Install only shell environment
 #   ./install.sh --wezterm    Install only wezterm
 #   ./install.sh --moom       Install only Moom Classic
+#   ./install.sh --macos      Apply macOS defaults (Dock, Finder, keyboard, trackpad)
 #   ./install.sh --kanata     Install only kanata
 #
 
@@ -30,6 +31,8 @@ INSTALL_KANATA=false
 INSTALL_TERMINAL=false
 INSTALL_WEZTERM=false
 INSTALL_MOOM=false
+INSTALL_BETTERDISPLAY=false
+INSTALL_MACOS=false
 HPC_MODE=false
 HAS_FLAGS=false
 
@@ -47,6 +50,8 @@ Options:
   --terminal   Zsh, Starship, fzf, and development tools
   --wezterm    WezTerm terminal emulator configuration (macOS only)
   --moom       Moom Classic window manager presets (macOS only)
+  --betterdisplay  BetterDisplay configuration (macOS only)
+  --macos      Apply macOS defaults (Dock, Finder, keyboard, trackpad)
   --kanata     Kanata keyboard remapper (macOS: LaunchDaemon, Linux: systemd)
   -h, --help   Show this help message
 
@@ -67,6 +72,8 @@ for arg in "$@"; do
             INSTALL_TERMINAL=true
             INSTALL_WEZTERM=true
             INSTALL_MOOM=true
+            INSTALL_BETTERDISPLAY=true
+            INSTALL_MACOS=true
             HAS_FLAGS=true
             ;;
         --hpc)
@@ -80,6 +87,8 @@ for arg in "$@"; do
         --tmux)     INSTALL_TMUX=true;     HAS_FLAGS=true ;;
         --wezterm)  INSTALL_WEZTERM=true;  HAS_FLAGS=true ;;
         --moom)     INSTALL_MOOM=true;     HAS_FLAGS=true ;;
+        --betterdisplay) INSTALL_BETTERDISPLAY=true; HAS_FLAGS=true ;;
+        --macos)    INSTALL_MACOS=true;    HAS_FLAGS=true ;;
         --kanata)   INSTALL_KANATA=true;   HAS_FLAGS=true ;;
         --terminal) INSTALL_TERMINAL=true; INSTALL_WEZTERM=true; HAS_FLAGS=true ;;
         --help|-h)  usage ;;
@@ -461,6 +470,40 @@ if $INSTALL_MOOM; then
         open -a "Moom Classic" 2>/dev/null || open -a "Moom" 2>/dev/null || true
 
         success "Moom Classic ready — all presets restored"
+    fi
+fi
+
+# ─── BetterDisplay ──────────────────────────────────────────────────────────
+
+if $INSTALL_BETTERDISPLAY; then
+    if [[ "$OS" != "Darwin" ]]; then
+        warn "BetterDisplay is macOS only — skipping"
+    else
+        info "Installing BetterDisplay configuration..."
+
+        if ! ls /Applications/BetterDisplay* &>/dev/null; then
+            brew install --cask betterdisplay
+        fi
+
+        killall BetterDisplay 2>/dev/null || true
+
+        defaults import pro.betterdisplay.BetterDisplay "$DOTFILES_DIR/betterdisplay/pro.betterdisplay.BetterDisplay.plist"
+
+        open -a "BetterDisplay" 2>/dev/null || true
+
+        success "BetterDisplay ready — configuration restored"
+    fi
+fi
+
+# ─── macOS defaults ─────────────────────────────────────────────────────────
+
+if $INSTALL_MACOS; then
+    if [[ "$OS" != "Darwin" ]]; then
+        warn "macOS defaults only apply on macOS — skipping"
+    else
+        info "Applying macOS defaults..."
+        bash "$DOTFILES_DIR/macos/macos-defaults.sh"
+        success "macOS defaults applied"
     fi
 fi
 
