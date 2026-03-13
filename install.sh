@@ -441,7 +441,19 @@ if $INSTALL_KANATA; then
         fi
         sudo launchctl load "$PLIST_DST"
 
-        success "Kanata ready — LaunchDaemon running"
+        # Watcher: restarts kanata when keyboards are connected/disconnected
+        WATCHER_DST="/Library/LaunchDaemons/com.jknafou.kanata-watcher.plist"
+        info "Installing kanata-watcher LaunchDaemon..."
+        sudo cp "$DOTFILES_DIR/kanata/com.jknafou.kanata-watcher.plist" "$WATCHER_DST"
+        sudo chown root:wheel "$WATCHER_DST"
+        sudo chmod 644 "$WATCHER_DST"
+
+        if sudo launchctl list | grep -q com.jknafou.kanata-watcher; then
+            sudo launchctl unload "$WATCHER_DST" 2>/dev/null || true
+        fi
+        sudo launchctl load "$WATCHER_DST"
+
+        success "Kanata ready — LaunchDaemon running (with keyboard hot-plug watcher)"
 
     else
         # Linux: install kanata from cargo or package manager
@@ -467,7 +479,12 @@ if $INSTALL_KANATA; then
         sudo systemctl daemon-reload
         sudo systemctl enable --now kanata
 
-        success "Kanata ready — systemd service running"
+        # udev rule: restarts kanata when keyboards are connected/disconnected
+        info "Installing udev rule for keyboard hot-plug..."
+        sudo cp "$DOTFILES_DIR/kanata/99-kanata-reload.rules" /etc/udev/rules.d/
+        sudo udevadm control --reload-rules
+
+        success "Kanata ready — systemd service running (with keyboard hot-plug watcher)"
     fi
 fi
 
