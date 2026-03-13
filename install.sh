@@ -14,6 +14,7 @@
 #   ./install.sh --terminal   Install only shell environment
 #   ./install.sh --wezterm    Install only wezterm
 #   ./install.sh --moom       Install only Moom Classic
+#   ./install.sh --logi       Restore Logi Options+ mouse config
 #   ./install.sh --macos      Apply macOS defaults (Dock, Finder, keyboard, trackpad)
 #   ./install.sh --kanata     Install only kanata
 #   ./install.sh --check      Verify all dependencies are installed (dry run)
@@ -33,6 +34,7 @@ INSTALL_TERMINAL=false
 INSTALL_WEZTERM=false
 INSTALL_MOOM=false
 INSTALL_BETTERDISPLAY=false
+INSTALL_LOGI=false
 INSTALL_MACOS=false
 CHECK_ONLY=false
 HPC_MODE=false
@@ -53,6 +55,7 @@ Options:
   --wezterm    WezTerm terminal emulator configuration (macOS only)
   --moom       Moom Classic window manager presets (macOS only)
   --betterdisplay  BetterDisplay configuration (macOS only)
+  --logi       Logi Options+ mouse configuration (macOS only)
   --macos      Apply macOS defaults (Dock, Finder, keyboard, trackpad)
   --kanata     Kanata keyboard remapper (macOS: LaunchDaemon, Linux: systemd)
   --check      Verify all dependencies are installed (dry run, no changes)
@@ -76,6 +79,7 @@ for arg in "$@"; do
             INSTALL_WEZTERM=true
             INSTALL_MOOM=true
             INSTALL_BETTERDISPLAY=true
+            INSTALL_LOGI=true
             INSTALL_MACOS=true
             HAS_FLAGS=true
             ;;
@@ -91,6 +95,7 @@ for arg in "$@"; do
         --wezterm)  INSTALL_WEZTERM=true;  HAS_FLAGS=true ;;
         --moom)     INSTALL_MOOM=true;     HAS_FLAGS=true ;;
         --betterdisplay) INSTALL_BETTERDISPLAY=true; HAS_FLAGS=true ;;
+        --logi)     INSTALL_LOGI=true;     HAS_FLAGS=true ;;
         --macos)    INSTALL_MACOS=true;    HAS_FLAGS=true ;;
         --check)    CHECK_ONLY=true;       HAS_FLAGS=true ;;
         --kanata)   INSTALL_KANATA=true;   HAS_FLAGS=true ;;
@@ -174,6 +179,7 @@ if $CHECK_ONLY; then
         check_app "Moom"
         check_app "BetterDisplay"
         check_app "Karabiner"
+        check_app "logioptionsplus"
 
         info "macOS services"
         if ps aux | grep -q '[k]anata'; then
@@ -603,6 +609,36 @@ if $INSTALL_BETTERDISPLAY; then
         open -a "BetterDisplay" 2>/dev/null || true
 
         success "BetterDisplay ready — configuration restored"
+    fi
+fi
+
+# ─── Logi Options+ ──────────────────────────────────────────────────────────
+
+if $INSTALL_LOGI; then
+    if [[ "$OS" != "Darwin" ]]; then
+        warn "Logi Options+ is macOS only — skipping"
+    else
+        info "Restoring Logi Options+ configuration..."
+
+        if ! ls /Applications/logioptionsplus* &>/dev/null; then
+            brew install --cask logi-options+
+        fi
+
+        LOGI_DIR="$HOME/Library/Application Support/LogiOptionsPlus"
+
+        # Quit Logi Options+ before restoring
+        killall "logioptionsplus" 2>/dev/null || true
+        killall "LogiOptionsPlus" 2>/dev/null || true
+        sleep 1
+
+        mkdir -p "$LOGI_DIR"
+        cp "$DOTFILES_DIR/logioptionsplus/settings.db" "$LOGI_DIR/settings.db"
+        cp "$DOTFILES_DIR/logioptionsplus/macros.db" "$LOGI_DIR/macros.db"
+
+        # Relaunch
+        open -a "logioptionsplus" 2>/dev/null || true
+
+        success "Logi Options+ ready — mouse config restored"
     fi
 fi
 
