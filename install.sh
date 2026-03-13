@@ -17,6 +17,7 @@
 #   ./install.sh --logi       Restore Logi Options+ mouse config
 #   ./install.sh --macos      Apply macOS defaults (Dock, Finder, keyboard, trackpad)
 #   ./install.sh --kanata     Install only kanata
+#   ./install.sh --shared-mac  Like --mac but kanata only runs in your session
 #   ./install.sh --check      Verify all dependencies are installed (dry run)
 #
 
@@ -37,6 +38,7 @@ INSTALL_BETTERDISPLAY=false
 INSTALL_LOGI=false
 INSTALL_MACOS=false
 CHECK_ONLY=false
+SHARED_MAC=false
 HPC_MODE=false
 HAS_FLAGS=false
 
@@ -58,6 +60,7 @@ Options:
   --logi       Logi Options+ mouse configuration (macOS only)
   --macos      Apply macOS defaults (Dock, Finder, keyboard, trackpad)
   --kanata     Kanata keyboard remapper (macOS: LaunchDaemon, Linux: systemd)
+  --shared-mac Like --mac but kanata only runs in your user session
   --check      Verify all dependencies are installed (dry run, no changes)
   -h, --help   Show this help message
 
@@ -97,6 +100,19 @@ for arg in "$@"; do
         --betterdisplay) INSTALL_BETTERDISPLAY=true; HAS_FLAGS=true ;;
         --logi)     INSTALL_LOGI=true;     HAS_FLAGS=true ;;
         --macos)    INSTALL_MACOS=true;    HAS_FLAGS=true ;;
+        --shared-mac)
+            INSTALL_NVIM=true
+            INSTALL_TMUX=true
+            INSTALL_KANATA=true
+            INSTALL_TERMINAL=true
+            INSTALL_WEZTERM=true
+            INSTALL_MOOM=true
+            INSTALL_BETTERDISPLAY=true
+            INSTALL_LOGI=true
+            INSTALL_MACOS=true
+            SHARED_MAC=true
+            HAS_FLAGS=true
+            ;;
         --check)    CHECK_ONLY=true;       HAS_FLAGS=true ;;
         --kanata)   INSTALL_KANATA=true;   HAS_FLAGS=true ;;
         --terminal) INSTALL_TERMINAL=true; INSTALL_WEZTERM=true; HAS_FLAGS=true ;;
@@ -683,15 +699,34 @@ if $INSTALL_KANATA; then
 
     if [[ "$OS" == "Darwin" ]]; then
         brew install kanata
-        link_package kanata --ignore='com\.jknafou\.kanata\.plist' --ignore='kanata\.service'
+        link_package kanata --ignore='com\.jknafou\.kanata\.plist' --ignore='kanata\.service' --ignore='kanata-session-wrapper\.sh'
 
         # LaunchDaemon
         PLIST_SRC="$DOTFILES_DIR/kanata/com.jknafou.kanata.plist"
         PLIST_DST="/Library/LaunchDaemons/com.jknafou.kanata.plist"
         PLIST_TMP=$(mktemp)
         WATCHER_DST="/Library/LaunchDaemons/com.jknafou.kanata-watcher.plist"
+        WRAPPER_DST="/usr/local/bin/kanata-session-wrapper.sh"
 
-        sed "s|__HOME__|$HOME|g" "$PLIST_SRC" > "$PLIST_TMP"
+        # Build ProgramArguments based on shared-mac mode
+        if $SHARED_MAC; then
+            sudo cp "$DOTFILES_DIR/kanata/kanata-session-wrapper.sh" "$WRAPPER_DST"
+            sudo chmod 755 "$WRAPPER_DST"
+            KANATA_ARGS="<array>
+      <string>$WRAPPER_DST</string>
+      <string>$(whoami)</string>
+      <string>--cfg</string>
+      <string>$HOME/.config/kanata/kanata.kdb</string>
+  </array>"
+        else
+            KANATA_ARGS="<array>
+      <string>/opt/homebrew/bin/kanata</string>
+      <string>--cfg</string>
+      <string>$HOME/.config/kanata/kanata.kdb</string>
+  </array>"
+        fi
+
+        sed -e "s|__HOME__|$HOME|g" -e "s|__KANATA_PROGRAM_ARGS__|$KANATA_ARGS|g" "$PLIST_SRC" > "$PLIST_TMP"
 
         KANATA_NEEDS_RELOAD=false
         if ! files_identical "$PLIST_TMP" "$PLIST_DST"; then

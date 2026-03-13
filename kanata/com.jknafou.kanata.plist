@@ -5,11 +5,7 @@
   <key>Label</key>
   <string>com.jknafou.kanata</string>
   <key>ProgramArguments</key>
-  <array>
-      <string>/opt/homebrew/bin/kanata</string>
-      <string>--cfg</string>
-      <string>__HOME__/.config/kanata/kanata.kdb</string>
-  </array>
+  __KANATA_PROGRAM_ARGS__
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
