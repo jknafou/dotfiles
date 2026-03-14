@@ -890,14 +890,40 @@ if $INSTALL_KANATA; then
 
         rm -f "$PLIST_TMP"
 
+        # ── Check Input Monitoring permission (TCC) ────────────────────
+        # kanata needs Input Monitoring even when running as root.
+        # SIP prevents granting this programmatically — user must do it.
+        KANATA_BIN=$(readlink -f /opt/homebrew/bin/kanata 2>/dev/null || echo /opt/homebrew/bin/kanata)
+        HAS_INPUT_MONITORING=false
+        if sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" \
+            "SELECT auth_value FROM access WHERE service='kTCCServiceListenEvent'" 2>/dev/null \
+            | grep -q "2"; then
+            # Check if kanata specifically has it (path may include Cellar version)
+            if sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" \
+                "SELECT auth_value FROM access WHERE service='kTCCServiceListenEvent' AND client LIKE '%kanata%' AND auth_value=2" 2>/dev/null \
+                | grep -q "2"; then
+                HAS_INPUT_MONITORING=true
+            fi
+        fi
+        if ! $HAS_INPUT_MONITORING; then
+            warn "kanata needs Input Monitoring permission (one-time setup):"
+            warn "  1. System Settings → Privacy & Security → Input Monitoring"
+            warn "  2. Click + → press ⌘⇧G → type: /opt/homebrew/bin/kanata"
+            warn "  3. Enable it, then re-run: ./install.sh --kanata"
+        fi
+
         # ── Verify kanata is running ─────────────────────────────────────
         sleep 3
         if ps aux | grep -q '[k]anata'; then
             success "Kanata is running"
         else
-            warn "Kanata is not running — check logs:"
-            warn "  sudo cat /Library/Logs/Kanata/kanata.err.log"
-            warn "  sudo cat /Library/Logs/Kanata/kanata.out.log"
+            if ! $HAS_INPUT_MONITORING; then
+                warn "Kanata is not running — grant Input Monitoring first (see above)"
+            else
+                warn "Kanata is not running — check logs:"
+                warn "  sudo cat /Library/Logs/Kanata/kanata.err.log"
+                warn "  sudo cat /Library/Logs/Kanata/kanata.out.log"
+            fi
         fi
 
     else
