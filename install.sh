@@ -761,20 +761,24 @@ if $INSTALL_KANATA; then
         fi
 
         # ── Disable Karabiner's own keyboard grabber ─────────────────────
-        # Karabiner's grabber/observer processes grab keyboards exclusively
-        # and conflict with kanata. We only need the DEXT + its daemon.
+        # Karabiner-Core-Service and other Karabiner processes grab keyboards
+        # exclusively, causing "IOHIDDeviceOpen: not permitted" for kanata.
+        # We only need the DEXT + VirtualHIDDevice-Daemon.
         info "Disabling Karabiner Elements services (only the DEXT driver is needed)..."
-        for plist in /Library/LaunchAgents/org.pqrs.karabiner*; do
+        # Disable LaunchAgents and LaunchDaemons (except VirtualHIDDevice ones)
+        for plist in /Library/LaunchAgents/org.pqrs.karabiner* /Library/LaunchDaemons/org.pqrs.karabiner*; do
             [ -f "$plist" ] || continue
+            case "$plist" in *VirtualHIDDevice*) continue ;; esac
             launchctl unload -w "$plist" 2>/dev/null || true
             sudo launchctl unload -w "$plist" 2>/dev/null || true
         done
-        pkill -f "Karabiner-Elements" 2>/dev/null || true
-        pkill -f "Karabiner-NotificationWindow" 2>/dev/null || true
-        pkill -f "karabiner_grabber" 2>/dev/null || true
-        pkill -f "karabiner_observer" 2>/dev/null || true
-        pkill -f "karabiner_console_user_server" 2>/dev/null || true
+        # Kill ALL Karabiner processes EXCEPT VirtualHIDDevice-Daemon and DEXT
+        ps aux | grep -i karabiner | grep -v grep \
+            | grep -v "VirtualHIDDevice-Daemon" \
+            | grep -v "VirtualHIDDevice.dext" \
+            | awk '{print $2}' | xargs sudo kill 2>/dev/null || true
         osascript -e 'tell application "System Events" to delete login item "Karabiner-Elements"' 2>/dev/null || true
+        sleep 2
 
         # ── Ensure VirtualHIDDevice-Daemon is running ────────────────────
         # This daemon bridges kanata to the DEXT. Without it:
