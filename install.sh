@@ -723,7 +723,7 @@ if $INSTALL_KANATA; then
             brew install --cask karabiner-elements
         fi
         brew install kanata
-        link_package kanata --ignore='\.plist$' --ignore='\.service$' --ignore='\.rules$' --ignore='kanata-session-wrapper'
+        link_package kanata --ignore='\.plist$' --ignore='\.service$' --ignore='\.rules$' --ignore='kanata-session-wrapper' --ignore='kanata-launcher'
 
         # ── Karabiner DEXT setup ──────────────────────────────────────────
         # Kanata needs two things from Karabiner:
@@ -822,6 +822,13 @@ if $INSTALL_KANATA; then
         PLIST_TMP=$(mktemp)
         WATCHER_DST="/Library/LaunchDaemons/com.jknafou.kanata-watcher.plist"
         WRAPPER_DST="/usr/local/bin/kanata-session-wrapper.sh"
+        LAUNCHER_DST="/usr/local/bin/kanata-launcher.sh"
+
+        # Install launcher that kills conflicting Karabiner processes
+        # before starting kanata (Karabiner-Core-Service grabs keyboards
+        # at boot via SMAppService, which launchctl can't disable)
+        sudo cp "$DOTFILES_DIR/kanata/kanata-launcher.sh" "$LAUNCHER_DST"
+        sudo chmod 755 "$LAUNCHER_DST"
 
         # Build ProgramArguments based on shared-mac mode
         # Single-line XML to avoid BSD sed newline issues
@@ -830,7 +837,7 @@ if $INSTALL_KANATA; then
             sudo chmod 755 "$WRAPPER_DST"
             KANATA_ARGS="<array><string>$WRAPPER_DST</string><string>$(whoami)</string><string>--cfg</string><string>$HOME/.config/kanata/kanata.kdb</string></array>"
         else
-            KANATA_ARGS="<array><string>/opt/homebrew/bin/kanata</string><string>--cfg</string><string>$HOME/.config/kanata/kanata.kdb</string></array>"
+            KANATA_ARGS="<array><string>$LAUNCHER_DST</string><string>--cfg</string><string>$HOME/.config/kanata/kanata.kdb</string></array>"
         fi
 
         sed -e "s|__HOME__|$HOME|g" -e "s|__KANATA_PROGRAM_ARGS__|$KANATA_ARGS|g" "$PLIST_SRC" > "$PLIST_TMP"
