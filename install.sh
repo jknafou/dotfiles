@@ -765,20 +765,36 @@ if $INSTALL_KANATA; then
         # exclusively, causing "IOHIDDeviceOpen: not permitted" for kanata.
         # We only need the DEXT + VirtualHIDDevice-Daemon.
         info "Disabling Karabiner Elements services (only the DEXT driver is needed)..."
-        # Disable LaunchAgents and LaunchDaemons (except VirtualHIDDevice ones)
-        for plist in /Library/LaunchAgents/org.pqrs.karabiner* /Library/LaunchDaemons/org.pqrs.karabiner*; do
+        # Use modern launchctl API to bootout and disable services.
+        # System domain (root services: Core-Service, session_monitor)
+        sudo launchctl list 2>/dev/null | grep -i karabiner | grep -iv VirtualHIDDevice \
+            | awk '{print $3}' | while read -r label; do
+            sudo launchctl bootout "system/$label" 2>/dev/null || true
+            sudo launchctl disable "system/$label" 2>/dev/null || true
+        done
+        # User domain (user services: Elements app, Menu, console_user_server)
+        launchctl list 2>/dev/null | grep -i karabiner | grep -iv VirtualHIDDevice \
+            | awk '{print $3}' | while read -r label; do
+            launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
+            launchctl disable "gui/$(id -u)/$label" 2>/dev/null || true
+        done
+        # Also disable via legacy API for any plists not yet caught
+        for plist in /Library/LaunchAgents/org.pqrs.* /Library/LaunchDaemons/org.pqrs.*; do
             [ -f "$plist" ] || continue
             case "$plist" in *VirtualHIDDevice*) continue ;; esac
-            launchctl unload -w "$plist" 2>/dev/null || true
             sudo launchctl unload -w "$plist" 2>/dev/null || true
         done
-        # Kill ALL Karabiner processes EXCEPT VirtualHIDDevice-Daemon and DEXT
+        # Kill any remaining Karabiner processes (except VirtualHIDDevice-Daemon and DEXT)
         ps aux | grep -i karabiner | grep -v grep \
             | grep -v "VirtualHIDDevice-Daemon" \
             | grep -v "VirtualHIDDevice.dext" \
-            | awk '{print $2}' | xargs sudo kill 2>/dev/null || true
+            | awk '{print $2}' | xargs sudo kill -9 2>/dev/null || true
         osascript -e 'tell application "System Events" to delete login item "Karabiner-Elements"' 2>/dev/null || true
         sleep 2
+        # Verify they're gone
+        if ps aux | grep -i karabiner | grep -v grep | grep -v "VirtualHIDDevice-Daemon" | grep -v "VirtualHIDDevice.dext" | grep -q .; then
+            warn "Some Karabiner processes are still running — they may need a reboot to fully stop"
+        fi
 
         # ── Ensure VirtualHIDDevice-Daemon is running ────────────────────
         # This daemon bridges kanata to the DEXT. Without it:
