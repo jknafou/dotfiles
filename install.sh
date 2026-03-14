@@ -739,8 +739,10 @@ if $INSTALL_KANATA; then
                 "$DEXT_ACTIVATE" activate 2>&1 || true
             fi
             sleep 2
-            # DEXT activation may launch Karabiner Elements UI — close it
-            pkill -f "[Kk]arabiner" 2>/dev/null || true
+            # DEXT activation may launch Karabiner Elements UI — close only
+            # the app, NOT the VirtualHIDDeviceClient (kanata needs it)
+            pkill -f "Karabiner-Elements" 2>/dev/null || true
+            pkill -f "Karabiner-NotificationWindow" 2>/dev/null || true
             if systemextensionsctl list 2>&1 | grep -q "org.pqrs.Karabiner-DriverKit-VirtualHIDDevice.*activated.*enabled"; then
                 success "Karabiner DEXT — activated and enabled"
             else
@@ -759,13 +761,25 @@ if $INSTALL_KANATA; then
         # and conflict with kanata. We only need the DEXT (which macOS
         # loads automatically via SystemExtensions, not launchd).
         info "Disabling Karabiner Elements services (only the DEXT driver is needed)..."
+        # Disable LaunchAgents (grabber, observer, UI agents)
         for plist in /Library/LaunchAgents/org.pqrs.karabiner*; do
             [ -f "$plist" ] || continue
             launchctl unload -w "$plist" 2>/dev/null || true
             sudo launchctl unload -w "$plist" 2>/dev/null || true
         done
-        pkill -f "[Kk]arabiner" 2>/dev/null || true
+        # Kill only the app and its agents — NOT the VirtualHIDDeviceClient
+        pkill -f "Karabiner-Elements" 2>/dev/null || true
+        pkill -f "Karabiner-NotificationWindow" 2>/dev/null || true
+        pkill -f "karabiner_grabber" 2>/dev/null || true
+        pkill -f "karabiner_observer" 2>/dev/null || true
         osascript -e 'tell application "System Events" to delete login item "Karabiner-Elements"' 2>/dev/null || true
+
+        # Ensure the VirtualHIDDeviceClient daemon is running (bridges
+        # kanata to the DEXT — without it: "driver connected: false")
+        VHID_CLIENT_PLIST="/Library/LaunchDaemons/org.pqrs.Karabiner-DriverKit-VirtualHIDDeviceClient.plist"
+        if [ -f "$VHID_CLIENT_PLIST" ]; then
+            sudo launchctl load -w "$VHID_CLIENT_PLIST" 2>/dev/null || true
+        fi
 
         # ── LaunchDaemon setup ───────────────────────────────────────────
         PLIST_SRC="$DOTFILES_DIR/kanata/com.jknafou.kanata.plist"
