@@ -17,7 +17,7 @@ brew "lazygit"
 # Editors
 brew "neovim"
 brew "tmux"
-brew "tmuxifier"
+# tmuxifier installed via git clone (not in Homebrew)
 
 # Languages & version managers
 brew "go"
@@ -33,6 +33,6 @@ brew "kanata"
 # Casks (macOS GUI apps)
 cask "wezterm"
 cask "betterdisplay"
-cask "moom"
+# Moom Classic installed from the App Store
 cask "karabiner-elements"
 cask "logi-options+"

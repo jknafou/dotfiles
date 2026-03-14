@@ -259,6 +259,18 @@ link_package() {
     git -C "$DOTFILES_DIR" checkout -- "$pkg" 2>/dev/null || true
 }
 
+# Add an app to login items (macOS only, idempotent)
+ensure_login_item() {
+    local app_name="$1"
+    local app_path="$2"
+    if [ ! -d "$app_path" ]; then return; fi
+    if osascript -e "tell application \"System Events\" to get the name of every login item" 2>/dev/null | grep -q "$app_name"; then
+        return
+    fi
+    info "Adding $app_name to login items..."
+    osascript -e "tell application \"System Events\" to make login item at end with properties {path:\"$app_path\", hidden:false}" 2>/dev/null || true
+}
+
 # Compare two files; returns 0 (true) if identical or both missing
 files_identical() {
     if [ ! -f "$1" ] || [ ! -f "$2" ]; then
@@ -387,7 +399,7 @@ elif [[ "$OS" == "Darwin" ]]; then
     # Install all formulae and casks from Brewfile
     if [ -f "$DOTFILES_DIR/macos/Brewfile" ]; then
         info "Installing packages from Brewfile..."
-        brew bundle --file="$DOTFILES_DIR/macos/Brewfile" --no-lock --no-upgrade
+        brew bundle --file="$DOTFILES_DIR/macos/Brewfile" --no-upgrade || warn "Some Brewfile entries failed (casks requiring sudo?) — continuing"
     fi
 
     success "Homebrew ready — all packages installed"
@@ -438,7 +450,11 @@ if $INSTALL_TMUX; then
         command -v tmux &>/dev/null || warn "tmux not found — install it via your HPC admin or module system"
     else
         pkg_install tmux
-        command -v brew &>/dev/null && brew install tmuxifier
+        # tmuxifier via git (not in Homebrew)
+        if [ ! -d "$HOME/.tmuxifier" ]; then
+            info "Installing tmuxifier..."
+            git clone https://github.com/jimeh/tmuxifier.git "$HOME/.tmuxifier"
+        fi
     fi
 
     backup_if_exists "$HOME/.config/tmux"
@@ -609,8 +625,7 @@ if $INSTALL_MOOM; then
         warn "Moom Classic is macOS only — skipping"
     else
         if ! ls /Applications/Moom* &>/dev/null; then
-            info "Installing Moom Classic..."
-            brew install --cask moom
+            warn "Moom Classic not found — install it from the App Store (Purchased tab)"
         fi
 
         if defaults_identical com.manytricks.Moom "$DOTFILES_DIR/moom/com.manytricks.Moom.plist"; then
@@ -622,6 +637,7 @@ if $INSTALL_MOOM; then
             open -a "Moom Classic" 2>/dev/null || open -a "Moom" 2>/dev/null || true
             success "Moom Classic ready — presets restored"
         fi
+        ensure_login_item "Moom Classic" "/Applications/Moom Classic.app"
     fi
 fi
 
@@ -645,6 +661,7 @@ if $INSTALL_BETTERDISPLAY; then
             open -a "BetterDisplay" 2>/dev/null || true
             success "BetterDisplay ready — configuration restored"
         fi
+        ensure_login_item "BetterDisplay" "/Applications/BetterDisplay.app"
     fi
 fi
 
@@ -656,7 +673,7 @@ if $INSTALL_LOGI; then
     else
         if ! ls /Applications/logioptionsplus* &>/dev/null; then
             info "Installing Logi Options+..."
-            brew install --cask logi-options+
+            brew install --cask logi-options+ || warn "Logi Options+ requires sudo — install manually: brew install --cask logi-options+"
         fi
 
         LOGI_DIR="$HOME/Library/Application Support/LogiOptionsPlus"

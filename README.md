@@ -9,9 +9,20 @@ Works on **macOS** and **Linux**.
 ```bash
 git clone https://github.com/jknafou/dotfiles ~/dotfiles
 cd ~/dotfiles
-./install.sh        # everything except kanata
-./install.sh --mac  # everything including kanata
+./install.sh              # everything except kanata
+./install.sh --mac        # everything including kanata (always on)
+./install.sh --shared-mac # like --mac but kanata only runs in your session
 ```
+
+`--shared-mac` can also be combined with individual flags (e.g. `--kanata --shared-mac`).
+
+### Manual steps
+
+Some components need interactive setup:
+
+- **Karabiner-Elements** — required by kanata. The installer will open it and prompt you to approve the system extension in **System Settings > Privacy & Security**, then reboot.
+- **Logi Options+** — requires sudo: `brew install --cask logi-options+`
+- **Moom Classic** — install from the App Store (Purchased tab), then re-run `./install.sh --moom` to import presets.
 
 ## Modules
 
