@@ -698,10 +698,57 @@ if $INSTALL_KANATA; then
     backup_if_exists "$HOME/.config/kanata"
 
     if [[ "$OS" == "Darwin" ]]; then
+        # ── Install kanata & Karabiner Elements (DEXT driver) ────────────
+        # Kanata needs Karabiner's DriverKit virtual HID device to emit
+        # remapped keystrokes. We only use the DEXT — not Karabiner's app.
+        if [ ! -d "/Applications/Karabiner-Elements.app" ]; then
+            info "Installing Karabiner Elements (virtual HID driver for kanata)..."
+            brew install --cask karabiner-elements
+        fi
         brew install kanata
-        link_package kanata --ignore='com\.jknafou\.kanata\.plist' --ignore='kanata\.service' --ignore='kanata-session-wrapper\.sh'
+        link_package kanata --ignore='\.plist$' --ignore='\.service$' --ignore='\.rules$' --ignore='kanata-session-wrapper'
 
-        # LaunchDaemon
+        # ── Activate Karabiner DriverKit virtual HID device ──────────────
+        # One-time activation: macOS will prompt for approval in
+        # System Settings → Privacy & Security on first run.
+        DEXT_ACTIVATE="/Applications/Karabiner-Elements.app/Contents/Library/Karabiner-VirtualHIDDevice-Manager.app/Contents/MacOS/Karabiner-VirtualHIDDevice-Manager"
+        if [ -x "$DEXT_ACTIVATE" ]; then
+            info "Activating Karabiner DriverKit virtual HID device..."
+            # Must run as the logged-in user (not root) so macOS shows
+            # the approval prompt in the GUI session
+            if [ "$EUID" -eq 0 ]; then
+                sudo -u "${SUDO_USER:-$(logname)}" "$DEXT_ACTIVATE" activate 2>&1 || true
+            else
+                "$DEXT_ACTIVATE" activate 2>&1 || true
+            fi
+            sleep 2
+            if systemextensionsctl list 2>&1 | grep -q "org.pqrs.Karabiner-DriverKit-VirtualHIDDevice.*activated.*enabled"; then
+                success "Karabiner DEXT — activated and enabled"
+            else
+                warn "Karabiner DEXT needs manual approval:"
+                warn "  → System Settings → Privacy & Security → scroll down"
+                warn "  → Allow the Karabiner system extension, then re-run:"
+                warn "    ./install.sh --kanata"
+            fi
+        else
+            warn "Karabiner-VirtualHIDDevice-Manager not found"
+            warn "  → Re-install: brew reinstall --cask karabiner-elements"
+        fi
+
+        # ── Disable Karabiner's own keyboard grabber ─────────────────────
+        # Karabiner's grabber/observer processes grab keyboards exclusively
+        # and conflict with kanata. We only need the DEXT (which macOS
+        # loads automatically via SystemExtensions, not launchd).
+        info "Disabling Karabiner Elements services (only the DEXT driver is needed)..."
+        for plist in /Library/LaunchAgents/org.pqrs.karabiner*; do
+            [ -f "$plist" ] || continue
+            launchctl unload -w "$plist" 2>/dev/null || true
+            sudo launchctl unload -w "$plist" 2>/dev/null || true
+        done
+        pkill -f "[Kk]arabiner" 2>/dev/null || true
+        osascript -e 'tell application "System Events" to delete login item "Karabiner-Elements"' 2>/dev/null || true
+
+        # ── LaunchDaemon setup ───────────────────────────────────────────
         PLIST_SRC="$DOTFILES_DIR/kanata/com.jknafou.kanata.plist"
         PLIST_DST="/Library/LaunchDaemons/com.jknafou.kanata.plist"
         PLIST_TMP=$(mktemp)
@@ -782,6 +829,16 @@ if $INSTALL_KANATA; then
         fi
 
         rm -f "$PLIST_TMP"
+
+        # ── Verify kanata is running ─────────────────────────────────────
+        sleep 3
+        if ps aux | grep -q '[k]anata'; then
+            success "Kanata is running"
+        else
+            warn "Kanata is not running — check logs:"
+            warn "  sudo cat /Library/Logs/Kanata/kanata.err.log"
+            warn "  sudo cat /Library/Logs/Kanata/kanata.out.log"
+        fi
 
     else
         # Linux: install kanata from cargo or package manager
