@@ -739,6 +739,8 @@ if $INSTALL_KANATA; then
                 "$DEXT_ACTIVATE" activate 2>&1 || true
             fi
             sleep 2
+            # DEXT activation may launch Karabiner Elements UI — close it
+            pkill -f "[Kk]arabiner" 2>/dev/null || true
             if systemextensionsctl list 2>&1 | grep -q "org.pqrs.Karabiner-DriverKit-VirtualHIDDevice.*activated.*enabled"; then
                 success "Karabiner DEXT — activated and enabled"
             else
@@ -773,21 +775,13 @@ if $INSTALL_KANATA; then
         WRAPPER_DST="/usr/local/bin/kanata-session-wrapper.sh"
 
         # Build ProgramArguments based on shared-mac mode
+        # Single-line XML to avoid BSD sed newline issues
         if $SHARED_MAC; then
             sudo cp "$DOTFILES_DIR/kanata/kanata-session-wrapper.sh" "$WRAPPER_DST"
             sudo chmod 755 "$WRAPPER_DST"
-            KANATA_ARGS="<array>
-      <string>$WRAPPER_DST</string>
-      <string>$(whoami)</string>
-      <string>--cfg</string>
-      <string>$HOME/.config/kanata/kanata.kdb</string>
-  </array>"
+            KANATA_ARGS="<array><string>$WRAPPER_DST</string><string>$(whoami)</string><string>--cfg</string><string>$HOME/.config/kanata/kanata.kdb</string></array>"
         else
-            KANATA_ARGS="<array>
-      <string>/opt/homebrew/bin/kanata</string>
-      <string>--cfg</string>
-      <string>$HOME/.config/kanata/kanata.kdb</string>
-  </array>"
+            KANATA_ARGS="<array><string>/opt/homebrew/bin/kanata</string><string>--cfg</string><string>$HOME/.config/kanata/kanata.kdb</string></array>"
         fi
 
         sed -e "s|__HOME__|$HOME|g" -e "s|__KANATA_PROGRAM_ARGS__|$KANATA_ARGS|g" "$PLIST_SRC" > "$PLIST_TMP"
