@@ -725,60 +725,75 @@ if $INSTALL_KANATA; then
         brew install kanata
         link_package kanata --ignore='\.plist$' --ignore='\.service$' --ignore='\.rules$' --ignore='kanata-session-wrapper'
 
-        # ── Activate Karabiner DriverKit virtual HID device ──────────────
-        # One-time activation: macOS will prompt for approval in
-        # System Settings → Privacy & Security on first run.
-        DEXT_ACTIVATE="/Applications/Karabiner-Elements.app/Contents/Library/Karabiner-VirtualHIDDevice-Manager.app/Contents/MacOS/Karabiner-VirtualHIDDevice-Manager"
-        if [ -x "$DEXT_ACTIVATE" ]; then
-            info "Activating Karabiner DriverKit virtual HID device..."
-            # Must run as the logged-in user (not root) so macOS shows
-            # the approval prompt in the GUI session
-            if [ "$EUID" -eq 0 ]; then
-                sudo -u "${SUDO_USER:-$(logname)}" "$DEXT_ACTIVATE" activate 2>&1 || true
-            else
-                "$DEXT_ACTIVATE" activate 2>&1 || true
+        # ── Karabiner DEXT setup ──────────────────────────────────────────
+        # Kanata needs two things from Karabiner:
+        #   1. The DriverKit DEXT — activated & approved (macOS loads it at boot)
+        #   2. The VirtualHIDDevice-Daemon — bridges kanata to the DEXT
+        # It does NOT need: Karabiner-Elements app, grabber, or observer.
+
+        # Check if DEXT is already activated
+        if systemextensionsctl list 2>&1 | grep -q "org.pqrs.Karabiner-DriverKit-VirtualHIDDevice.*activated.*enabled"; then
+            success "Karabiner DEXT — activated and enabled"
+        else
+            # Only run activation if not yet activated
+            DEXT_ACTIVATE="/Applications/Karabiner-Elements.app/Contents/Library/Karabiner-VirtualHIDDevice-Manager.app/Contents/MacOS/Karabiner-VirtualHIDDevice-Manager"
+            if [ -x "$DEXT_ACTIVATE" ]; then
+                info "Activating Karabiner DriverKit virtual HID device..."
+                if [ "$EUID" -eq 0 ]; then
+                    sudo -u "${SUDO_USER:-$(logname)}" "$DEXT_ACTIVATE" activate 2>&1 || true
+                else
+                    "$DEXT_ACTIVATE" activate 2>&1 || true
+                fi
+                sleep 3
+                # Kill any Karabiner UI that may have opened during activation
+                pkill -f "Karabiner-Elements" 2>/dev/null || true
+                pkill -f "Karabiner-NotificationWindow" 2>/dev/null || true
             fi
-            sleep 2
-            # DEXT activation may launch Karabiner Elements UI — close only
-            # the app, NOT the VirtualHIDDeviceClient (kanata needs it)
-            pkill -f "Karabiner-Elements" 2>/dev/null || true
-            pkill -f "Karabiner-NotificationWindow" 2>/dev/null || true
             if systemextensionsctl list 2>&1 | grep -q "org.pqrs.Karabiner-DriverKit-VirtualHIDDevice.*activated.*enabled"; then
                 success "Karabiner DEXT — activated and enabled"
             else
                 warn "Karabiner DEXT needs manual approval:"
-                warn "  → System Settings → Privacy & Security → scroll down"
-                warn "  → Allow the Karabiner system extension, then re-run:"
-                warn "    ./install.sh --kanata"
+                warn "  1. Open Karabiner Elements from /Applications"
+                warn "  2. Approve the system extension in System Settings → Privacy & Security"
+                warn "  3. Close Karabiner Elements"
+                warn "  4. Re-run: ./install.sh --kanata"
             fi
-        else
-            warn "Karabiner-VirtualHIDDevice-Manager not found"
-            warn "  → Re-install: brew reinstall --cask karabiner-elements"
         fi
 
         # ── Disable Karabiner's own keyboard grabber ─────────────────────
         # Karabiner's grabber/observer processes grab keyboards exclusively
-        # and conflict with kanata. We only need the DEXT (which macOS
-        # loads automatically via SystemExtensions, not launchd).
+        # and conflict with kanata. We only need the DEXT + its daemon.
         info "Disabling Karabiner Elements services (only the DEXT driver is needed)..."
-        # Disable LaunchAgents (grabber, observer, UI agents)
         for plist in /Library/LaunchAgents/org.pqrs.karabiner*; do
             [ -f "$plist" ] || continue
             launchctl unload -w "$plist" 2>/dev/null || true
             sudo launchctl unload -w "$plist" 2>/dev/null || true
         done
-        # Kill only the app and its agents — NOT the VirtualHIDDeviceClient
         pkill -f "Karabiner-Elements" 2>/dev/null || true
         pkill -f "Karabiner-NotificationWindow" 2>/dev/null || true
         pkill -f "karabiner_grabber" 2>/dev/null || true
         pkill -f "karabiner_observer" 2>/dev/null || true
+        pkill -f "karabiner_console_user_server" 2>/dev/null || true
         osascript -e 'tell application "System Events" to delete login item "Karabiner-Elements"' 2>/dev/null || true
 
-        # Ensure the VirtualHIDDeviceClient daemon is running (bridges
-        # kanata to the DEXT — without it: "driver connected: false")
-        VHID_CLIENT_PLIST="/Library/LaunchDaemons/org.pqrs.Karabiner-DriverKit-VirtualHIDDeviceClient.plist"
-        if [ -f "$VHID_CLIENT_PLIST" ]; then
-            sudo launchctl load -w "$VHID_CLIENT_PLIST" 2>/dev/null || true
+        # ── Ensure VirtualHIDDevice-Daemon is running ────────────────────
+        # This daemon bridges kanata to the DEXT. Without it:
+        #   "driver activated: true, driver connected: false"
+        VHID_DAEMON="/Library/Application Support/org.pqrs/Karabiner-DriverKit-VirtualHIDDevice/Applications/Karabiner-VirtualHIDDevice-Daemon.app/Contents/MacOS/Karabiner-VirtualHIDDevice-Daemon"
+        if [ -x "$VHID_DAEMON" ]; then
+            if ! pgrep -f "Karabiner-VirtualHIDDevice-Daemon" >/dev/null 2>&1; then
+                info "Starting Karabiner VirtualHIDDevice daemon..."
+                sudo "$VHID_DAEMON" &
+                sleep 2
+            fi
+            if pgrep -f "Karabiner-VirtualHIDDevice-Daemon" >/dev/null 2>&1; then
+                success "VirtualHIDDevice daemon — running"
+            else
+                warn "VirtualHIDDevice daemon failed to start"
+            fi
+        else
+            warn "VirtualHIDDevice daemon not found at expected path"
+            warn "  → Try: brew reinstall --cask karabiner-elements"
         fi
 
         # ── LaunchDaemon setup ───────────────────────────────────────────
