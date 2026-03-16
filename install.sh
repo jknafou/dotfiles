@@ -246,6 +246,7 @@ backup_if_exists() {
         fi
     elif [ -e "$target" ]; then
         warn "Backing up $target → ${target}.bak"
+        rm -rf "${target}.bak"
         mv "$target" "${target}.bak"
     fi
 }
