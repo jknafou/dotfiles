@@ -724,11 +724,6 @@ if $INSTALL_KANATA; then
             brew install --cask karabiner-elements
         fi
         brew install kanata
-        # Copy kanata binary to a stable path so macOS Input Monitoring
-        # (TCC) permission survives brew upgrades. The Cellar path changes
-        # with every version, invalidating the TCC entry.
-        sudo cp "$(readlink -f /opt/homebrew/bin/kanata)" /usr/local/bin/kanata
-        sudo chmod 755 /usr/local/bin/kanata
         link_package kanata --ignore='\.plist$' --ignore='\.service$' --ignore='\.rules$' --ignore='\.kdb$' --ignore='kanata-session-wrapper' --ignore='kanata-launcher'
 
         # Symlink the right config based on mode (both are editable in the repo).
@@ -929,17 +924,17 @@ if $INSTALL_KANATA; then
         # ── Check Input Monitoring permission (TCC) ────────────────────
         # kanata needs Input Monitoring even when running as root.
         # SIP prevents granting this programmatically — user must do it.
-        # We check for /usr/local/bin/kanata (stable path that survives upgrades).
+        KANATA_CELLAR=$(readlink -f /opt/homebrew/bin/kanata 2>/dev/null || echo /opt/homebrew/bin/kanata)
         HAS_INPUT_MONITORING=false
         if sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" \
-            "SELECT auth_value FROM access WHERE service='kTCCServiceListenEvent' AND client='/usr/local/bin/kanata' AND auth_value=2" 2>/dev/null \
+            "SELECT auth_value FROM access WHERE service='kTCCServiceListenEvent' AND client='$KANATA_CELLAR' AND auth_value=2" 2>/dev/null \
             | grep -q "2"; then
             HAS_INPUT_MONITORING=true
         fi
         if ! $HAS_INPUT_MONITORING; then
             warn "kanata needs Input Monitoring permission (one-time setup):"
             warn "  1. System Settings → Privacy & Security → Input Monitoring"
-            warn "  2. Click + → press ⌘⇧G → type: /usr/local/bin/kanata"
+            warn "  2. Click + → press ⌘⇧G → type: $KANATA_CELLAR"
             warn "  3. Enable it, then re-run: ./install.sh --kanata"
         fi
 

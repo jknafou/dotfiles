@@ -17,4 +17,4 @@ fi
 
 sleep 2
 
-exec /usr/local/bin/kanata "$@"
+exec /opt/homebrew/bin/kanata "$@"

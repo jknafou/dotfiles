@@ -23,7 +23,7 @@ $python\
 $docker_context\
 [](fg:blue bg:purple)\
 $time\
-[](fg:purple)\
+[ ](fg:purple)\
 $line_break$character"""
 
 palette = 'catppuccin_mocha'
@@ -182,7 +182,6 @@ disabled = false
 
 [character]
 disabled = false
-format = "$symbol"
 success_symbol = '[](bold fg:green)'
 error_symbol = '[](bold fg:red)'
 vimcmd_symbol = '[](bold fg:creen)'
