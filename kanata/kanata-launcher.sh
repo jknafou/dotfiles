@@ -15,6 +15,13 @@ if [ -x "$VHID_DAEMON" ] && ! pgrep -f "Karabiner-VirtualHIDDevice-Daemon" >/dev
     "$VHID_DAEMON" &
 fi
 
-sleep 2
+# Wait for DEXT and daemon to be ready (they may not be loaded yet at boot)
+for i in $(seq 1 30); do
+    if systemextensionsctl list 2>&1 | grep -q "org.pqrs.Karabiner-DriverKit-VirtualHIDDevice.*activated.*enabled" \
+        && pgrep -f "Karabiner-VirtualHIDDevice-Daemon" >/dev/null 2>&1; then
+        break
+    fi
+    sleep 2
+done
 
 exec /opt/homebrew/bin/kanata "$@"
