@@ -779,13 +779,13 @@ if $INSTALL_KANATA; then
             | awk '{print $3}' | while read -r label; do
             sudo launchctl bootout "system/$label" 2>/dev/null || true
             sudo launchctl disable "system/$label" 2>/dev/null || true
-        done
+        done || true
         # User domain (user services: Elements app, Menu, console_user_server)
         launchctl list 2>/dev/null | grep -i karabiner | grep -iv VirtualHIDDevice \
             | awk '{print $3}' | while read -r label; do
             launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
             launchctl disable "gui/$(id -u)/$label" 2>/dev/null || true
-        done
+        done || true
         # Also disable via legacy API for any plists not yet caught
         for plist in /Library/LaunchAgents/org.pqrs.* /Library/LaunchDaemons/org.pqrs.*; do
             [ -f "$plist" ] || continue
@@ -793,14 +793,18 @@ if $INSTALL_KANATA; then
             sudo launchctl unload -w "$plist" 2>/dev/null || true
         done
         # Kill any remaining Karabiner processes (except VirtualHIDDevice-Daemon and DEXT)
-        ps aux | grep -i karabiner | grep -v grep \
+        KARABINER_PIDS=$(ps aux | grep -i karabiner | grep -v grep \
             | grep -v "VirtualHIDDevice-Daemon" \
             | grep -v "VirtualHIDDevice.dext" \
-            | awk '{print $2}' | xargs sudo kill -9 2>/dev/null || true
+            | awk '{print $2}') || true
+        if [ -n "$KARABINER_PIDS" ]; then
+            echo "$KARABINER_PIDS" | xargs sudo kill -9 2>/dev/null || true
+        fi
         osascript -e 'tell application "System Events" to delete login item "Karabiner-Elements"' 2>/dev/null || true
         sleep 2
         # Verify they're gone
-        if ps aux | grep -i karabiner | grep -v grep | grep -v "VirtualHIDDevice-Daemon" | grep -v "VirtualHIDDevice.dext" | grep -q .; then
+        REMAINING=$(ps aux | grep -i karabiner | grep -v grep | grep -v "VirtualHIDDevice-Daemon" | grep -v "VirtualHIDDevice.dext") || true
+        if [ -n "$REMAINING" ]; then
             warn "Some Karabiner processes are still running — they may need a reboot to fully stop"
         fi
 
