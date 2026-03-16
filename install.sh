@@ -725,7 +725,13 @@ if $INSTALL_KANATA; then
         brew install kanata
         link_package kanata --ignore='\.plist$' --ignore='\.service$' --ignore='\.rules$' --ignore='\.kdb$' --ignore='kanata-session-wrapper' --ignore='kanata-launcher'
 
-        # Symlink the right config based on mode (both are editable in the repo)
+        # Symlink the right config based on mode (both are editable in the repo).
+        # If stow created a directory symlink for ~/.config/kanata/ pointing
+        # into the repo, remove it — we need a real directory so ln -sf
+        # doesn't create a circular symlink inside the repo.
+        if [ -L "$HOME/.config/kanata" ]; then
+            rm "$HOME/.config/kanata"
+        fi
         mkdir -p "$HOME/.config/kanata"
         if $SHARED_MAC; then
             ln -sf "$DOTFILES_DIR/kanata/.config/kanata/kanata-shared.kdb" "$HOME/.config/kanata/kanata.kdb"
