@@ -723,7 +723,15 @@ if $INSTALL_KANATA; then
             brew install --cask karabiner-elements
         fi
         brew install kanata
-        link_package kanata --ignore='\.plist$' --ignore='\.service$' --ignore='\.rules$' --ignore='kanata-session-wrapper' --ignore='kanata-launcher'
+        link_package kanata --ignore='\.plist$' --ignore='\.service$' --ignore='\.rules$' --ignore='\.kdb$' --ignore='kanata-session-wrapper' --ignore='kanata-launcher'
+
+        # Symlink the right config based on mode (both are editable in the repo)
+        mkdir -p "$HOME/.config/kanata"
+        if $SHARED_MAC; then
+            ln -sf "$DOTFILES_DIR/kanata/.config/kanata/kanata-shared.kdb" "$HOME/.config/kanata/kanata.kdb"
+        else
+            ln -sf "$DOTFILES_DIR/kanata/.config/kanata/kanata.kdb" "$HOME/.config/kanata/kanata.kdb"
+        fi
 
         # ── Karabiner DEXT setup ──────────────────────────────────────────
         # Kanata needs two things from Karabiner:
@@ -850,8 +858,13 @@ if $INSTALL_KANATA; then
             KANATA_NEEDS_RELOAD=true
         fi
         # Also reload if the .kdb config changed (symlink target vs repo)
+        if $SHARED_MAC; then
+            KDB_SRC="$DOTFILES_DIR/kanata/.config/kanata/kanata-shared.kdb"
+        else
+            KDB_SRC="$DOTFILES_DIR/kanata/.config/kanata/kanata.kdb"
+        fi
         if [ -L "$HOME/.config/kanata/kanata.kdb" ]; then
-            if ! files_identical "$DOTFILES_DIR/kanata/.config/kanata/kanata.kdb" "$HOME/.config/kanata/kanata.kdb"; then
+            if ! files_identical "$KDB_SRC" "$HOME/.config/kanata/kanata.kdb"; then
                 KANATA_NEEDS_RELOAD=true
             fi
         else

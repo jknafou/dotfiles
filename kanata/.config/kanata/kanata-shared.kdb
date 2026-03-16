@@ -1,0 +1,52 @@
+;; defsrc is still necessary
+(defcfg
+  process-unmapped-keys yes
+)
+
+(defsrc
+  f1   f2   f3   f4   f5   f6   f7   f8   f9   f10   f11   f12
+  1    2    3    4    5    6    7    8    9    0    -    =
+  caps a s d f g h j k l ; '
+  fn
+)
+
+(defvar
+  tap-time 150
+  hold-time 200
+)
+
+(defalias
+  capsl (tap-hold $tap-time $hold-time esc (layer-toggle arrow))
+  a (tap-hold $tap-time $hold-time a lmet)
+  s (tap-hold $tap-time $hold-time s lalt)
+  d (tap-hold $tap-time $hold-time d lsft)
+  f (tap-hold $tap-time $hold-time f lctl)
+  g (tap-hold $tap-time $hold-time g (layer-toggle fn))
+  h (tap-hold $tap-time $hold-time h (layer-toggle fn))
+  j (tap-hold $tap-time $hold-time j rctl)
+  k (tap-hold $tap-time $hold-time k rsft)
+  l (tap-hold $tap-time $hold-time l ralt)
+  ; (tap-hold $tap-time $hold-time ; rmet)
+  fnl (tap-hold 200 200 fn (layer-toggle fn))
+)
+
+(deflayer base
+  brdn  brup  _    _    _    _   prev  pp  next  mute  vold  volu
+  _    _    _    _    _    _    _    _    _    _    _    =
+  @capsl @a @s @d @f @g @h @j @k @l @; _
+  @fnl
+)
+
+(deflayer arrow
+  brdn  brup  _    _    _    _   prev  pp  next  mute  vold  volu
+  _    _    _    _    _    _    _    _    _    _    _    =
+  @capsl @a @s @d @f @g left down up right bspc _
+  @fnl
+)
+
+(deflayer fn
+  f1   f2   f3   f4   f5   f6   f7   f8   f9   f10   f11   f12
+  f1   f2   f3   f4   f5   f6   f7   f8   f9   f10  f11  f12
+  esc _ _ _ _ _ _ _ _ _ _ _
+  @fnl
+)
