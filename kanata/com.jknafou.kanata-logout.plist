@@ -10,9 +10,5 @@
   </array>
   <key>RunAtLoad</key>
   <true/>
-  <key>StandardOutPath</key>
-  <string>/tmp/kanata-logout.out.log</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/kanata-logout.err.log</string>
 </dict>
 </plist>
