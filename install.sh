@@ -801,8 +801,12 @@ if $INSTALL_KANATA; then
             launchctl bootout "gui/$(id -u)/com.jknafou.kanata-login" 2>/dev/null || true
             launchctl bootstrap "gui/$(id -u)" "$LOGIN_AGENT_DST"
 
-            # Logout hook: run kanata_off when ANY user logs out
-            sudo defaults write com.apple.loginwindow LogoutHook /usr/local/bin/kanata-logout-hook.sh
+            # LaunchAgent: run kanata_off when the user's session ends
+            # (launchd sends SIGTERM to agents on logout; the script traps it)
+            LOGOUT_AGENT_DST="$HOME/Library/LaunchAgents/com.jknafou.kanata-logout.plist"
+            cp "$DOTFILES_DIR/kanata/com.jknafou.kanata-logout.plist" "$LOGOUT_AGENT_DST"
+            launchctl bootout "gui/$(id -u)/com.jknafou.kanata-logout" 2>/dev/null || true
+            launchctl bootstrap "gui/$(id -u)" "$LOGOUT_AGENT_DST"
 
             success "Shared Mac mode: kanata starts at your login, stops at any logout"
         else
