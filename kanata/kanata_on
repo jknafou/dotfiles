@@ -4,11 +4,13 @@
 # Ensure vhid-daemon is running
 sudo /bin/launchctl bootstrap system /Library/LaunchDaemons/com.jknafou.vhid-daemon.plist 2>/dev/null || true
 
-# Enable kanata (--shared-mac disables it to prevent boot auto-start)
-sudo /bin/launchctl enable system/com.jknafou.kanata
+# Clear any stale disable override
+sudo /bin/launchctl enable system/com.jknafou.kanata 2>/dev/null || true
 
-# Clean slate: bootout first, then bootstrap (RunAtLoad=true starts it)
+# Ensure clean state: bootout if loaded, wait for launchd to fully unload
 sudo /bin/launchctl bootout system/com.jknafou.kanata 2>/dev/null || true
+sleep 1
+
 if sudo /bin/launchctl bootstrap system /Library/LaunchDaemons/com.jknafou.kanata.plist; then
     echo "kanata started"
 else
