@@ -721,11 +721,11 @@ if $INSTALL_KANATA; then
             info "Installing Karabiner Elements (virtual HID driver for kanata)..."
             brew install --cask karabiner-elements
         fi
-        brew install kanata
-        brew pin kanata  # prevent upgrades that break TCC permission
+        brew install kanata 2>/dev/null || true
+        brew pin kanata 2>/dev/null || true  # prevent upgrades that break TCC permission
 
         # ── Config symlink ───────────────────────────────────────────────
-        link_package kanata --ignore='\.plist$' --ignore='\.service$' --ignore='\.rules$' --ignore='\.kdb$' --ignore='kanata-session-wrapper' --ignore='kanata-launcher' --ignore='kanata_on' --ignore='kanata_off' --ignore='kanata-sudoers' --ignore='kanata-logout-hook'
+        link_package kanata --ignore='\.plist$' --ignore='\.service$' --ignore='\.rules$' --ignore='\.kdb$' --ignore='kanata-session-wrapper\.sh$' --ignore='kanata-launcher\.sh$' --ignore='kanata_on$' --ignore='kanata_off$' --ignore='kanata-sudoers$' --ignore='kanata-logout-hook\.sh$'
         if [ -L "$HOME/.config/kanata" ]; then rm "$HOME/.config/kanata"; fi
         mkdir -p "$HOME/.config/kanata"
         ln -sf "$DOTFILES_DIR/kanata/.config/kanata/kanata.kdb" "$HOME/.config/kanata/kanata.kdb"
@@ -742,6 +742,7 @@ if $INSTALL_KANATA; then
         fi
 
         # ── Install scripts & sudoers (all users can kanata_on/kanata_off) ─
+        sudo -v  # refresh sudo credentials before the sudo-heavy section
         sudo mkdir -p /Library/Logs/Kanata
         for script in kanata_on kanata_off kanata-launcher.sh kanata-logout-hook.sh; do
             sudo cp "$DOTFILES_DIR/kanata/$script" "/usr/local/bin/$script"
@@ -761,25 +762,34 @@ if $INSTALL_KANATA; then
         sed -e "s|__HOME__|$HOME|g" -e "s|__KANATA_PROGRAM_ARGS__|$KANATA_ARGS|g" \
             "$DOTFILES_DIR/kanata/com.jknafou.kanata.plist" > "$PLIST_TMP"
 
-        install_daemon() {
+        # Install plist file without bootstrapping
+        install_plist() {
             local src="$1" dst="$2" label="$3"
             sudo cp "$src" "$dst"
             sudo chown root:wheel "$dst"
             sudo chmod 644 "$dst"
+        }
+
+        # Stop, install, and (re)start a daemon
+        install_and_start_daemon() {
+            local src="$1" dst="$2" label="$3"
             sudo launchctl bootout "system/$label" 2>/dev/null || true
+            install_plist "$src" "$dst" "$label"
             sudo launchctl bootstrap system "$dst"
             sudo launchctl enable "system/$label"
         }
 
-        install_daemon "$DOTFILES_DIR/kanata/com.jknafou.vhid-daemon.plist" "$VHID_DST" "com.jknafou.vhid-daemon"
-        install_daemon "$PLIST_TMP" "$KANATA_DST" "com.jknafou.kanata"
-        install_daemon "$DOTFILES_DIR/kanata/com.jknafou.kanata-watcher.plist" "$WATCHER_DST" "com.jknafou.kanata-watcher"
+        # Always-on daemons: vhid-daemon and watcher
+        install_and_start_daemon "$DOTFILES_DIR/kanata/com.jknafou.vhid-daemon.plist" "$VHID_DST" "com.jknafou.vhid-daemon"
+        install_and_start_daemon "$DOTFILES_DIR/kanata/com.jknafou.kanata-watcher.plist" "$WATCHER_DST" "com.jknafou.kanata-watcher"
+
+        # Kanata daemon: install plist but only start for personal Mac
+        sudo launchctl bootout system/com.jknafou.kanata 2>/dev/null || true
+        install_plist "$PLIST_TMP" "$KANATA_DST" "com.jknafou.kanata"
         rm -f "$PLIST_TMP"
 
-        # ── Shared Mac: auto-start at login, stop at logout ─────────────
         if $SHARED_MAC; then
-            # Disable auto-start at boot (kanata_on runs at user login instead)
-            sudo launchctl bootout system/com.jknafou.kanata 2>/dev/null || true
+            # ── Shared Mac: kanata_on at login, kanata_off at logout ──────
             sudo launchctl disable system/com.jknafou.kanata 2>/dev/null || true
 
             # LaunchAgent: run kanata_on when the installing user logs in
@@ -793,6 +803,10 @@ if $INSTALL_KANATA; then
             sudo defaults write com.apple.loginwindow LogoutHook /usr/local/bin/kanata-logout-hook.sh
 
             success "Shared Mac mode: kanata starts at your login, stops at any logout"
+        else
+            # ── Personal Mac: start kanata now ────────────────────────────
+            sudo launchctl bootstrap system "$KANATA_DST"
+            sudo launchctl enable system/com.jknafou.kanata
         fi
 
         # Clean up old plists
@@ -803,33 +817,21 @@ if $INSTALL_KANATA; then
             fi
         done
 
-        # ── Check Input Monitoring (TCC) ─────────────────────────────────
+        # ── Start and verify ────────────────────────────────────────────
         KANATA_CELLAR=$(readlink -f /opt/homebrew/bin/kanata 2>/dev/null || echo /opt/homebrew/bin/kanata)
-        HAS_INPUT_MONITORING=false
-        if sudo sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" \
-            "SELECT auth_value FROM access WHERE service='kTCCServiceListenEvent' AND client='$KANATA_CELLAR' AND auth_value=2" 2>/dev/null \
-            | grep -q "2"; then
-            HAS_INPUT_MONITORING=true
+        if $SHARED_MAC; then
+            # Start kanata now via kanata_on (same path as login agent)
+            /usr/local/bin/kanata_on
         fi
-        if ! $HAS_INPUT_MONITORING; then
-            warn "kanata needs Input Monitoring permission (one-time setup):"
-            warn "  1. System Settings → Privacy & Security → Input Monitoring"
-            warn "  2. Click + → press ⌘⇧G → type: $KANATA_CELLAR"
-            warn "  3. Enable it, then re-run: ./install.sh --kanata"
-        fi
-
-        # ── Verify ───────────────────────────────────────────────────────
         sleep 5
         if ps aux | grep -q '[k]anata'; then
             success "Kanata is running"
         else
-            if ! $HAS_INPUT_MONITORING; then
-                warn "Kanata is not running — grant Input Monitoring first (see above)"
-            else
-                warn "Kanata is not running — check logs:"
-                warn "  sudo cat /Library/Logs/Kanata/kanata.err.log"
-                warn "  sudo cat /Library/Logs/Kanata/kanata.out.log"
-            fi
+            warn "Kanata is not running. Most likely cause: Input Monitoring not granted."
+            warn "  1. System Settings → Privacy & Security → Input Monitoring"
+            warn "  2. Click + → press ⌘⇧G → type: $KANATA_CELLAR"
+            warn "  3. Enable it, then run: kanata_on"
+            warn "If already granted, check logs: sudo cat /Library/Logs/Kanata/kanata.err.log"
         fi
 
         success "Use kanata_on / kanata_off to control (reload shell first)"

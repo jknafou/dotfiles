@@ -1,6 +1,17 @@
 #!/bin/bash
 # Start kanata keyboard remapper
+
+# Ensure vhid-daemon is running
 sudo /bin/launchctl bootstrap system /Library/LaunchDaemons/com.jknafou.vhid-daemon.plist 2>/dev/null || true
-sudo /bin/launchctl bootstrap system /Library/LaunchDaemons/com.jknafou.kanata.plist 2>/dev/null || true
-sudo /bin/launchctl kickstart -k system/com.jknafou.kanata 2>/dev/null || true
-echo "kanata started"
+
+# Enable kanata (--shared-mac disables it to prevent boot auto-start)
+sudo /bin/launchctl enable system/com.jknafou.kanata
+
+# Clean slate: bootout first, then bootstrap (RunAtLoad=true starts it)
+sudo /bin/launchctl bootout system/com.jknafou.kanata 2>/dev/null || true
+if sudo /bin/launchctl bootstrap system /Library/LaunchDaemons/com.jknafou.kanata.plist; then
+    echo "kanata started"
+else
+    echo "kanata failed to start — check: sudo cat /Library/Logs/Kanata/kanata.err.log" >&2
+    exit 1
+fi
