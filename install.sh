@@ -802,17 +802,20 @@ if $INSTALL_KANATA; then
 
         if $SHARED_MAC; then
             # ── Shared Mac: kanata_on at login, kanata_off at logout ──────
-            # LaunchAgent: run kanata_on when the installing user logs in
+            # LaunchAgent (per-user): run kanata_on when the installing user logs in
             LOGIN_AGENT_DST="$HOME/Library/LaunchAgents/com.jknafou.kanata-login.plist"
             mkdir -p "$HOME/Library/LaunchAgents"
             cp "$DOTFILES_DIR/kanata/com.jknafou.kanata-login.plist" "$LOGIN_AGENT_DST"
             launchctl bootout "gui/$(id -u)/com.jknafou.kanata-login" 2>/dev/null || true
             launchctl bootstrap "gui/$(id -u)" "$LOGIN_AGENT_DST"
 
-            # LaunchAgent: run kanata_off when the user's session ends
-            # (launchd sends SIGTERM to agents on logout; the script traps it)
-            LOGOUT_AGENT_DST="$HOME/Library/LaunchAgents/com.jknafou.kanata-logout.plist"
-            cp "$DOTFILES_DIR/kanata/com.jknafou.kanata-logout.plist" "$LOGOUT_AGENT_DST"
+            # LaunchAgent (system-wide): run kanata_off when ANY user logs out
+            # /Library/LaunchAgents/ runs in every user session
+            LOGOUT_AGENT_DST="/Library/LaunchAgents/com.jknafou.kanata-logout.plist"
+            sudo cp "$DOTFILES_DIR/kanata/com.jknafou.kanata-logout.plist" "$LOGOUT_AGENT_DST"
+            sudo chown root:wheel "$LOGOUT_AGENT_DST"
+            sudo chmod 644 "$LOGOUT_AGENT_DST"
+            # Bootstrap for current session (other sessions get it on next login)
             launchctl bootout "gui/$(id -u)/com.jknafou.kanata-logout" 2>/dev/null || true
             launchctl bootstrap "gui/$(id -u)" "$LOGOUT_AGENT_DST"
 
