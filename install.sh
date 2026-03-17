@@ -716,217 +716,74 @@ if $INSTALL_KANATA; then
     backup_if_exists "$HOME/.config/kanata"
 
     if [[ "$OS" == "Darwin" ]]; then
-        # ── Install kanata & Karabiner Elements (DEXT driver) ────────────
-        # Kanata needs Karabiner's DriverKit virtual HID device to emit
-        # remapped keystrokes. We only use the DEXT — not Karabiner's app.
+        # ── Install packages ─────────────────────────────────────────────
         if [ ! -d "/Applications/Karabiner-Elements.app" ]; then
             info "Installing Karabiner Elements (virtual HID driver for kanata)..."
             brew install --cask karabiner-elements
         fi
         brew install kanata
+        brew pin kanata  # prevent upgrades that break TCC permission
+
+        # ── Config symlink ───────────────────────────────────────────────
         link_package kanata --ignore='\.plist$' --ignore='\.service$' --ignore='\.rules$' --ignore='\.kdb$' --ignore='kanata-session-wrapper' --ignore='kanata-launcher'
-
-        # Symlink the right config based on mode (both are editable in the repo).
-        # If stow created a directory symlink for ~/.config/kanata/ pointing
-        # into the repo, remove it — we need a real directory so ln -sf
-        # doesn't create a circular symlink inside the repo.
-        if [ -L "$HOME/.config/kanata" ]; then
-            rm "$HOME/.config/kanata"
-        fi
+        if [ -L "$HOME/.config/kanata" ]; then rm "$HOME/.config/kanata"; fi
         mkdir -p "$HOME/.config/kanata"
-        if $SHARED_MAC; then
-            ln -sf "$DOTFILES_DIR/kanata/.config/kanata/kanata-shared.kdb" "$HOME/.config/kanata/kanata.kdb"
-        else
-            ln -sf "$DOTFILES_DIR/kanata/.config/kanata/kanata.kdb" "$HOME/.config/kanata/kanata.kdb"
-        fi
+        ln -sf "$DOTFILES_DIR/kanata/.config/kanata/kanata.kdb" "$HOME/.config/kanata/kanata.kdb"
 
-        # ── Karabiner DEXT setup ──────────────────────────────────────────
-        # Kanata needs two things from Karabiner:
-        #   1. The DriverKit DEXT — activated & approved (macOS loads it at boot)
-        #   2. The VirtualHIDDevice-Daemon — bridges kanata to the DEXT
-        # It does NOT need: Karabiner-Elements app, grabber, or observer.
-
-        # Check if DEXT is already activated
+        # ── Check DEXT activation ────────────────────────────────────────
         if systemextensionsctl list 2>&1 | grep -q "org.pqrs.Karabiner-DriverKit-VirtualHIDDevice.*activated.*enabled"; then
             success "Karabiner DEXT — activated and enabled"
         else
-            # Only run activation if not yet activated
-            DEXT_ACTIVATE="/Applications/Karabiner-Elements.app/Contents/Library/Karabiner-VirtualHIDDevice-Manager.app/Contents/MacOS/Karabiner-VirtualHIDDevice-Manager"
-            if [ -x "$DEXT_ACTIVATE" ]; then
-                info "Activating Karabiner DriverKit virtual HID device..."
-                if [ "$EUID" -eq 0 ]; then
-                    sudo -u "${SUDO_USER:-$(logname)}" "$DEXT_ACTIVATE" activate 2>&1 || true
-                else
-                    "$DEXT_ACTIVATE" activate 2>&1 || true
-                fi
-                sleep 3
-                # Kill any Karabiner UI that may have opened during activation
-                pkill -f "Karabiner-Elements" 2>/dev/null || true
-                pkill -f "Karabiner-NotificationWindow" 2>/dev/null || true
-            fi
-            if systemextensionsctl list 2>&1 | grep -q "org.pqrs.Karabiner-DriverKit-VirtualHIDDevice.*activated.*enabled"; then
-                success "Karabiner DEXT — activated and enabled"
-            else
-                warn "Karabiner DEXT needs manual approval:"
-                warn "  1. Open Karabiner Elements from /Applications"
-                warn "  2. Approve the system extension in System Settings → Privacy & Security"
-                warn "  3. Close Karabiner Elements"
-                warn "  4. Re-run: ./install.sh --kanata"
-            fi
+            warn "Karabiner DEXT needs activation:"
+            warn "  1. Open Karabiner Elements from /Applications"
+            warn "  2. Approve the system extension in System Settings → Privacy & Security"
+            warn "  3. Close Karabiner Elements"
+            warn "  4. Re-run: ./install.sh --kanata"
         fi
 
-        # ── Disable Karabiner's own keyboard grabber ─────────────────────
-        # Karabiner-Core-Service and other Karabiner processes grab keyboards
-        # exclusively, causing "IOHIDDeviceOpen: not permitted" for kanata.
-        # We only need the DEXT + VirtualHIDDevice-Daemon.
-        info "Disabling Karabiner Elements services (only the DEXT driver is needed)..."
-        # Use modern launchctl API to bootout and disable services.
-        # System domain (root services: Core-Service, session_monitor)
-        sudo launchctl list 2>/dev/null | grep -i karabiner | grep -iv VirtualHIDDevice \
-            | awk '{print $3}' | while read -r label; do
-            sudo launchctl bootout "system/$label" 2>/dev/null || true
-            sudo launchctl disable "system/$label" 2>/dev/null || true
-        done || true
-        # User domain (user services: Elements app, Menu, console_user_server)
-        launchctl list 2>/dev/null | grep -i karabiner | grep -iv VirtualHIDDevice \
-            | awk '{print $3}' | while read -r label; do
-            launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
-            launchctl disable "gui/$(id -u)/$label" 2>/dev/null || true
-        done || true
-        # Also disable via legacy API for any plists not yet caught
-        for plist in /Library/LaunchAgents/org.pqrs.* /Library/LaunchDaemons/org.pqrs.*; do
-            [ -f "$plist" ] || continue
-            case "$plist" in *VirtualHIDDevice*) continue ;; esac
-            sudo launchctl unload -w "$plist" 2>/dev/null || true
-        done
-        # Kill any remaining Karabiner processes (except VirtualHIDDevice-Daemon and DEXT)
-        KARABINER_PIDS=$(ps aux | grep -i karabiner | grep -v grep \
-            | grep -v "VirtualHIDDevice-Daemon" \
-            | grep -v "VirtualHIDDevice.dext" \
-            | awk '{print $2}') || true
-        if [ -n "$KARABINER_PIDS" ]; then
-            echo "$KARABINER_PIDS" | xargs sudo kill -9 2>/dev/null || true
-        fi
-        osascript -e 'tell application "System Events" to delete login item "Karabiner-Elements"' 2>/dev/null || true
-        sleep 2
-        # Verify they're gone
-        REMAINING=$(ps aux | grep -i karabiner | grep -v grep | grep -v "VirtualHIDDevice-Daemon" | grep -v "VirtualHIDDevice.dext") || true
-        if [ -n "$REMAINING" ]; then
-            warn "Some Karabiner processes are still running — they may need a reboot to fully stop"
-        fi
-
-        # ── Ensure VirtualHIDDevice-Daemon is running ────────────────────
-        # This daemon bridges kanata to the DEXT. Without it:
-        #   "driver activated: true, driver connected: false"
-        VHID_DAEMON="/Library/Application Support/org.pqrs/Karabiner-DriverKit-VirtualHIDDevice/Applications/Karabiner-VirtualHIDDevice-Daemon.app/Contents/MacOS/Karabiner-VirtualHIDDevice-Daemon"
-        if [ -x "$VHID_DAEMON" ]; then
-            if ! pgrep -f "Karabiner-VirtualHIDDevice-Daemon" >/dev/null 2>&1; then
-                info "Starting Karabiner VirtualHIDDevice daemon..."
-                sudo "$VHID_DAEMON" &
-                sleep 2
-            fi
-            if pgrep -f "Karabiner-VirtualHIDDevice-Daemon" >/dev/null 2>&1; then
-                success "VirtualHIDDevice daemon — running"
-            else
-                warn "VirtualHIDDevice daemon failed to start"
-            fi
-        else
-            warn "VirtualHIDDevice daemon not found at expected path"
-            warn "  → Try: brew reinstall --cask karabiner-elements"
-        fi
-
-        # ── LaunchDaemon setup ───────────────────────────────────────────
-        PLIST_SRC="$DOTFILES_DIR/kanata/com.jknafou.kanata.plist"
-        PLIST_DST="/Library/LaunchDaemons/com.jknafou.kanata.plist"
-        PLIST_TMP=$(mktemp)
-        WATCHER_DST="/Library/LaunchDaemons/com.jknafou.kanata-watcher.plist"
-        WRAPPER_DST="/usr/local/bin/kanata-session-wrapper.sh"
+        # ── Install LaunchDaemons ────────────────────────────────────────
+        sudo mkdir -p /Library/Logs/Kanata
         LAUNCHER_DST="/usr/local/bin/kanata-launcher.sh"
+        KANATA_DST="/Library/LaunchDaemons/com.jknafou.kanata.plist"
+        WATCHER_DST="/Library/LaunchDaemons/com.jknafou.kanata-watcher.plist"
+        VHID_DST="/Library/LaunchDaemons/com.jknafou.vhid-daemon.plist"
 
-        # Install launcher that kills conflicting Karabiner processes
-        # before starting kanata (Karabiner-Core-Service grabs keyboards
-        # at boot via SMAppService, which launchctl can't disable)
         sudo cp "$DOTFILES_DIR/kanata/kanata-launcher.sh" "$LAUNCHER_DST"
         sudo chmod 755 "$LAUNCHER_DST"
 
-        # Build ProgramArguments based on shared-mac mode
-        # Single-line XML to avoid BSD sed newline issues
-        if $SHARED_MAC; then
-            sudo cp "$DOTFILES_DIR/kanata/kanata-session-wrapper.sh" "$WRAPPER_DST"
-            sudo chmod 755 "$WRAPPER_DST"
-            KANATA_ARGS="<array><string>$WRAPPER_DST</string><string>$(whoami)</string><string>--cfg</string><string>$HOME/.config/kanata/kanata.kdb</string></array>"
-        else
-            KANATA_ARGS="<array><string>$LAUNCHER_DST</string><string>--cfg</string><string>$HOME/.config/kanata/kanata.kdb</string></array>"
-        fi
+        # Build kanata plist from template
+        PLIST_TMP=$(mktemp)
+        KANATA_ARGS="<array><string>$LAUNCHER_DST</string><string>--cfg</string><string>$HOME/.config/kanata/kanata.kdb</string></array>"
+        sed -e "s|__HOME__|$HOME|g" -e "s|__KANATA_PROGRAM_ARGS__|$KANATA_ARGS|g" \
+            "$DOTFILES_DIR/kanata/com.jknafou.kanata.plist" > "$PLIST_TMP"
 
-        sed -e "s|__HOME__|$HOME|g" -e "s|__KANATA_PROGRAM_ARGS__|$KANATA_ARGS|g" "$PLIST_SRC" > "$PLIST_TMP"
+        install_daemon() {
+            local src="$1" dst="$2" label="$3"
+            sudo cp "$src" "$dst"
+            sudo chown root:wheel "$dst"
+            sudo chmod 644 "$dst"
+            sudo launchctl bootout "system/$label" 2>/dev/null || true
+            sudo launchctl bootstrap system "$dst"
+            sudo launchctl enable "system/$label"
+        }
 
-        KANATA_NEEDS_RELOAD=false
-        if ! files_identical "$PLIST_TMP" "$PLIST_DST"; then
-            KANATA_NEEDS_RELOAD=true
-        fi
-        if ! files_identical "$DOTFILES_DIR/kanata/com.jknafou.kanata-watcher.plist" "$WATCHER_DST"; then
-            KANATA_NEEDS_RELOAD=true
-        fi
-        # Also reload if the .kdb config changed (symlink target vs repo)
-        if $SHARED_MAC; then
-            KDB_SRC="$DOTFILES_DIR/kanata/.config/kanata/kanata-shared.kdb"
-        else
-            KDB_SRC="$DOTFILES_DIR/kanata/.config/kanata/kanata.kdb"
-        fi
-        if [ -L "$HOME/.config/kanata/kanata.kdb" ]; then
-            if ! files_identical "$KDB_SRC" "$HOME/.config/kanata/kanata.kdb"; then
-                KANATA_NEEDS_RELOAD=true
-            fi
-        else
-            KANATA_NEEDS_RELOAD=true
-        fi
-
-        if $KANATA_NEEDS_RELOAD; then
-            info "Installing LaunchDaemons (requires sudo)..."
-            sudo mkdir -p /Library/Logs/Kanata
-
-            # Only reload plists if they changed
-            if ! files_identical "$PLIST_TMP" "$PLIST_DST"; then
-                sudo cp "$PLIST_TMP" "$PLIST_DST"
-                sudo chown root:wheel "$PLIST_DST"
-                sudo chmod 644 "$PLIST_DST"
-                if sudo launchctl list | grep -q com.jknafou.kanata; then
-                    sudo launchctl unload "$PLIST_DST" 2>/dev/null || true
-                fi
-                sudo launchctl load "$PLIST_DST"
-            fi
-
-            if ! files_identical "$DOTFILES_DIR/kanata/com.jknafou.kanata-watcher.plist" "$WATCHER_DST"; then
-                sudo cp "$DOTFILES_DIR/kanata/com.jknafou.kanata-watcher.plist" "$WATCHER_DST"
-                sudo chown root:wheel "$WATCHER_DST"
-                sudo chmod 644 "$WATCHER_DST"
-                if sudo launchctl list | grep -q com.jknafou.kanata-watcher; then
-                    sudo launchctl unload "$WATCHER_DST" 2>/dev/null || true
-                fi
-                sudo launchctl load "$WATCHER_DST"
-            fi
-
-            # If only the .kdb config changed, just signal kanata to restart
-            # (KeepAlive will relaunch it with the new config)
-            if ps aux | grep -q '[k]anata'; then
-                info "Restarting kanata to pick up config changes..."
-                sudo pkill -x kanata
-            fi
-
-            success "Kanata ready — reloaded"
-        else
-            success "Kanata — already up to date (skipping reload)"
-        fi
-
+        install_daemon "$DOTFILES_DIR/kanata/com.jknafou.vhid-daemon.plist" "$VHID_DST" "com.jknafou.vhid-daemon"
+        install_daemon "$PLIST_TMP" "$KANATA_DST" "com.jknafou.kanata"
+        install_daemon "$DOTFILES_DIR/kanata/com.jknafou.kanata-watcher.plist" "$WATCHER_DST" "com.jknafou.kanata-watcher"
         rm -f "$PLIST_TMP"
 
-        # ── Check Input Monitoring permission (TCC) ────────────────────
-        # kanata needs Input Monitoring even when running as root.
-        # SIP prevents granting this programmatically — user must do it.
+        # Clean up old plists
+        for old in com.example.kanata com.example.kanata.plist.bak; do
+            if [ -f "/Library/LaunchDaemons/$old" ]; then
+                sudo launchctl bootout "system/$old" 2>/dev/null || true
+                sudo rm -f "/Library/LaunchDaemons/$old"
+            fi
+        done
+
+        # ── Check Input Monitoring (TCC) ─────────────────────────────────
         KANATA_CELLAR=$(readlink -f /opt/homebrew/bin/kanata 2>/dev/null || echo /opt/homebrew/bin/kanata)
         HAS_INPUT_MONITORING=false
-        if sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" \
+        if sudo sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" \
             "SELECT auth_value FROM access WHERE service='kTCCServiceListenEvent' AND client='$KANATA_CELLAR' AND auth_value=2" 2>/dev/null \
             | grep -q "2"; then
             HAS_INPUT_MONITORING=true
@@ -938,8 +795,8 @@ if $INSTALL_KANATA; then
             warn "  3. Enable it, then re-run: ./install.sh --kanata"
         fi
 
-        # ── Verify kanata is running ─────────────────────────────────────
-        sleep 3
+        # ── Verify ───────────────────────────────────────────────────────
+        sleep 5
         if ps aux | grep -q '[k]anata'; then
             success "Kanata is running"
         else
@@ -951,6 +808,8 @@ if $INSTALL_KANATA; then
                 warn "  sudo cat /Library/Logs/Kanata/kanata.out.log"
             fi
         fi
+
+        success "Use kanata_on / kanata_off to control (reload shell first)"
 
     else
         # Linux: install kanata from cargo or package manager
