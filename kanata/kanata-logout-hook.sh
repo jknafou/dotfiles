@@ -4,7 +4,7 @@
 # Using exec sleep so SIGTERM hits bash directly (no child process blocking).
 
 cleanup() {
-    /usr/local/bin/kanata_off >/tmp/kanata-logout.out.log 2>/tmp/kanata-logout.err.log
+    /usr/local/bin/kanata_off >/dev/null 2>&1
 }
 
 trap cleanup TERM INT
