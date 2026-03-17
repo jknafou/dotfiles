@@ -783,17 +783,25 @@ if $INSTALL_KANATA; then
         install_and_start_daemon "$DOTFILES_DIR/kanata/com.jknafou.vhid-daemon.plist" "$VHID_DST" "com.jknafou.vhid-daemon"
         install_and_start_daemon "$DOTFILES_DIR/kanata/com.jknafou.kanata-watcher.plist" "$WATCHER_DST" "com.jknafou.kanata-watcher"
 
-        # Kanata daemon: install plist but only start for personal Mac
+        # Clean up old plists
+        for old in com.example.kanata com.example.kanata.plist.bak; do
+            if [ -f "/Library/LaunchDaemons/$old" ]; then
+                sudo launchctl bootout "system/$old" 2>/dev/null || true
+                sudo rm -f "/Library/LaunchDaemons/$old"
+            fi
+        done
+
+        # Kanata daemon: fully stop, install plist, then start
         sudo launchctl bootout system/com.jknafou.kanata 2>/dev/null || true
+        sudo /usr/bin/pkill -x kanata 2>/dev/null || true
+        sleep 2  # let launchd fully release the service
         install_plist "$PLIST_TMP" "$KANATA_DST" "com.jknafou.kanata"
         rm -f "$PLIST_TMP"
+        sudo launchctl enable system/com.jknafou.kanata 2>/dev/null || true
+        sudo launchctl bootstrap system "$KANATA_DST"
 
         if $SHARED_MAC; then
             # ── Shared Mac: kanata_on at login, kanata_off at logout ──────
-            # Don't bootstrap or disable — just leave the plist installed.
-            # kanata_on will bootstrap on demand; not bootstrapping here
-            # means kanata won't auto-start at boot.
-
             # LaunchAgent: run kanata_on when the installing user logs in
             LOGIN_AGENT_DST="$HOME/Library/LaunchAgents/com.jknafou.kanata-login.plist"
             mkdir -p "$HOME/Library/LaunchAgents"
@@ -810,25 +818,12 @@ if $INSTALL_KANATA; then
 
             success "Shared Mac mode: kanata starts at your login, stops at any logout"
         else
-            # ── Personal Mac: start kanata now ────────────────────────────
-            sudo launchctl bootstrap system "$KANATA_DST"
+            # ── Personal Mac ──────────────────────────────────────────────
             sudo launchctl enable system/com.jknafou.kanata
         fi
 
-        # Clean up old plists
-        for old in com.example.kanata com.example.kanata.plist.bak; do
-            if [ -f "/Library/LaunchDaemons/$old" ]; then
-                sudo launchctl bootout "system/$old" 2>/dev/null || true
-                sudo rm -f "/Library/LaunchDaemons/$old"
-            fi
-        done
-
-        # ── Start and verify ────────────────────────────────────────────
+        # ── Verify ────────────────────────────────────────────────────
         KANATA_CELLAR=$(readlink -f /opt/homebrew/bin/kanata 2>/dev/null || echo /opt/homebrew/bin/kanata)
-        if $SHARED_MAC; then
-            # Start kanata now via kanata_on (same path as login agent)
-            /usr/local/bin/kanata_on
-        fi
         sleep 5
         if ps aux | grep -q '[k]anata'; then
             success "Kanata is running"
