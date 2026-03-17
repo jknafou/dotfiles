@@ -1,6 +1,6 @@
 # Allow all users to control kanata without password
+ALL ALL=(root) NOPASSWD: /bin/launchctl enable system/com.jknafou.kanata
 ALL ALL=(root) NOPASSWD: /bin/launchctl bootstrap system /Library/LaunchDaemons/com.jknafou.kanata.plist
 ALL ALL=(root) NOPASSWD: /bin/launchctl bootstrap system /Library/LaunchDaemons/com.jknafou.vhid-daemon.plist
 ALL ALL=(root) NOPASSWD: /bin/launchctl bootout system/com.jknafou.kanata
-ALL ALL=(root) NOPASSWD: /bin/launchctl kickstart -k system/com.jknafou.kanata
 ALL ALL=(root) NOPASSWD: /usr/bin/pkill -x kanata
