@@ -11,8 +11,8 @@
   <key>RunAtLoad</key>
   <true/>
   <key>StandardOutPath</key>
-  <string>/Library/Logs/Kanata/kanata-login.out.log</string>
+  <string>/tmp/kanata-login.out.log</string>
   <key>StandardErrorPath</key>
-  <string>/Library/Logs/Kanata/kanata-login.err.log</string>
+  <string>/tmp/kanata-login.err.log</string>
 </dict>
 </plist>
