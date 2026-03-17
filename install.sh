@@ -725,7 +725,7 @@ if $INSTALL_KANATA; then
         brew pin kanata  # prevent upgrades that break TCC permission
 
         # ── Config symlink ───────────────────────────────────────────────
-        link_package kanata --ignore='\.plist$' --ignore='\.service$' --ignore='\.rules$' --ignore='\.kdb$' --ignore='kanata-session-wrapper' --ignore='kanata-launcher'
+        link_package kanata --ignore='\.plist$' --ignore='\.service$' --ignore='\.rules$' --ignore='\.kdb$' --ignore='kanata-session-wrapper' --ignore='kanata-launcher' --ignore='kanata_on' --ignore='kanata_off' --ignore='kanata-sudoers' --ignore='kanata-logout-hook'
         if [ -L "$HOME/.config/kanata" ]; then rm "$HOME/.config/kanata"; fi
         mkdir -p "$HOME/.config/kanata"
         ln -sf "$DOTFILES_DIR/kanata/.config/kanata/kanata.kdb" "$HOME/.config/kanata/kanata.kdb"
@@ -741,19 +741,23 @@ if $INSTALL_KANATA; then
             warn "  4. Re-run: ./install.sh --kanata"
         fi
 
-        # ── Install LaunchDaemons ────────────────────────────────────────
+        # ── Install scripts & sudoers (all users can kanata_on/kanata_off) ─
         sudo mkdir -p /Library/Logs/Kanata
-        LAUNCHER_DST="/usr/local/bin/kanata-launcher.sh"
+        for script in kanata_on kanata_off kanata-launcher.sh kanata-logout-hook.sh; do
+            sudo cp "$DOTFILES_DIR/kanata/$script" "/usr/local/bin/$script"
+            sudo chmod 755 "/usr/local/bin/$script"
+        done
+        sudo cp "$DOTFILES_DIR/kanata/kanata-sudoers" /etc/sudoers.d/kanata
+        sudo chmod 440 /etc/sudoers.d/kanata
+
+        # ── Install LaunchDaemons ────────────────────────────────────────
         KANATA_DST="/Library/LaunchDaemons/com.jknafou.kanata.plist"
         WATCHER_DST="/Library/LaunchDaemons/com.jknafou.kanata-watcher.plist"
         VHID_DST="/Library/LaunchDaemons/com.jknafou.vhid-daemon.plist"
 
-        sudo cp "$DOTFILES_DIR/kanata/kanata-launcher.sh" "$LAUNCHER_DST"
-        sudo chmod 755 "$LAUNCHER_DST"
-
         # Build kanata plist from template
         PLIST_TMP=$(mktemp)
-        KANATA_ARGS="<array><string>$LAUNCHER_DST</string><string>--cfg</string><string>$HOME/.config/kanata/kanata.kdb</string></array>"
+        KANATA_ARGS="<array><string>/usr/local/bin/kanata-launcher.sh</string><string>--cfg</string><string>$HOME/.config/kanata/kanata.kdb</string></array>"
         sed -e "s|__HOME__|$HOME|g" -e "s|__KANATA_PROGRAM_ARGS__|$KANATA_ARGS|g" \
             "$DOTFILES_DIR/kanata/com.jknafou.kanata.plist" > "$PLIST_TMP"
 
@@ -771,6 +775,25 @@ if $INSTALL_KANATA; then
         install_daemon "$PLIST_TMP" "$KANATA_DST" "com.jknafou.kanata"
         install_daemon "$DOTFILES_DIR/kanata/com.jknafou.kanata-watcher.plist" "$WATCHER_DST" "com.jknafou.kanata-watcher"
         rm -f "$PLIST_TMP"
+
+        # ── Shared Mac: auto-start at login, stop at logout ─────────────
+        if $SHARED_MAC; then
+            # Disable auto-start at boot (kanata_on runs at user login instead)
+            sudo launchctl bootout system/com.jknafou.kanata 2>/dev/null || true
+            sudo launchctl disable system/com.jknafou.kanata 2>/dev/null || true
+
+            # LaunchAgent: run kanata_on when the installing user logs in
+            LOGIN_AGENT_DST="$HOME/Library/LaunchAgents/com.jknafou.kanata-login.plist"
+            mkdir -p "$HOME/Library/LaunchAgents"
+            cp "$DOTFILES_DIR/kanata/com.jknafou.kanata-login.plist" "$LOGIN_AGENT_DST"
+            launchctl bootout "gui/$(id -u)/com.jknafou.kanata-login" 2>/dev/null || true
+            launchctl bootstrap "gui/$(id -u)" "$LOGIN_AGENT_DST"
+
+            # Logout hook: run kanata_off when ANY user logs out
+            sudo defaults write com.apple.loginwindow LogoutHook /usr/local/bin/kanata-logout-hook.sh
+
+            success "Shared Mac mode: kanata starts at your login, stops at any logout"
+        fi
 
         # Clean up old plists
         for old in com.example.kanata com.example.kanata.plist.bak; do

@@ -8,6 +8,10 @@ kanata on macOS requires three components:
 2. **VirtualHIDDevice-Daemon** — bridges kanata to the DEXT (LaunchDaemon: `com.jknafou.vhid-daemon`)
 3. **kanata** — grabs keyboards via IOHIDManager, remaps through DEXT (LaunchDaemon: `com.jknafou.kanata`)
 
+### Two modes
+- **`--kanata`** (personal Mac): kanata auto-starts at boot via LaunchDaemon
+- **`--shared-mac`** (multi-user): kanata starts at installing user's login, stops at any logout. All users can `kanata_on`/`kanata_off`.
+
 ### Critical details
 - **Karabiner-Core-Service conflicts**: It grabs keyboards exclusively. The launcher (`kanata-launcher.sh`) kills it RIGHT BEFORE exec-ing kanata — no delay between kill and exec, or Karabiner respawns and grabs first.
 - **TCC/Input Monitoring**: Required even for root LaunchDaemons on macOS 26+. Permission is tied to the **exact binary hash** (not path). The Cellar path changes on brew upgrade, invalidating TCC. kanata is pinned with `brew pin kanata`.
@@ -15,20 +19,22 @@ kanata on macOS requires three components:
 - **`--nodelay` flag**: Must be used when running kanata as a daemon (skips 2s keyboard-release wait).
 
 ### Files
-- `kanata/kanata-launcher.sh` → deployed to `/usr/local/bin/kanata-launcher.sh`
+- `kanata/kanata-launcher.sh` → `/usr/local/bin/kanata-launcher.sh`
+- `kanata/kanata_on` → `/usr/local/bin/kanata_on` (available to all users)
+- `kanata/kanata_off` → `/usr/local/bin/kanata_off` (available to all users)
+- `kanata/kanata-sudoers` → `/etc/sudoers.d/kanata` (passwordless for all users)
+- `kanata/kanata-logout-hook.sh` → `/usr/local/bin/kanata-logout-hook.sh` (--shared-mac only)
 - `kanata/com.jknafou.kanata.plist` → template (uses `__KANATA_PROGRAM_ARGS__` placeholder)
+- `kanata/com.jknafou.kanata-login.plist` → LaunchAgent for --shared-mac auto-start at login
 - `kanata/com.jknafou.vhid-daemon.plist` → VirtualHIDDevice-Daemon LaunchDaemon
 - `kanata/com.jknafou.kanata-watcher.plist` → watches /dev for keyboard hotplug
 - `kanata/.config/kanata/kanata.kdb` → home-row mods config (symlinked)
 
-### Shell functions
-`kanata_on` / `kanata_off` in `zsh/.zshrc` — control the LaunchDaemon.
-
 ### Fresh Mac install
-1. `./install.sh --kanata` (installs everything)
+1. `./install.sh --kanata` or `./install.sh --shared-mac`
 2. If DEXT not activated: open Karabiner Elements once, approve in System Settings → Privacy & Security
 3. Grant Input Monitoring for the kanata Cellar binary path shown by the installer
-4. Re-run `./install.sh --kanata`
+4. Re-run the install command
 
 ## Working practices
 - **Don't layer untested fixes**: For system-level changes (LaunchDaemons, launchctl, TCC), verify each change works (including reboot) before committing.

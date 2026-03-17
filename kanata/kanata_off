@@ -1,0 +1,5 @@
+#!/bin/bash
+# Stop kanata keyboard remapper
+sudo /bin/launchctl bootout system/com.jknafou.kanata 2>/dev/null || true
+sudo /usr/bin/pkill -x kanata 2>/dev/null || true
+echo "kanata stopped"

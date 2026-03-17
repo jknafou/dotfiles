@@ -1,0 +1,6 @@
+#!/bin/bash
+# Start kanata keyboard remapper
+sudo /bin/launchctl bootstrap system /Library/LaunchDaemons/com.jknafou.vhid-daemon.plist 2>/dev/null || true
+sudo /bin/launchctl bootstrap system /Library/LaunchDaemons/com.jknafou.kanata.plist 2>/dev/null || true
+sudo /bin/launchctl kickstart -k system/com.jknafou.kanata 2>/dev/null || true
+echo "kanata started"

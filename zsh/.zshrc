@@ -58,22 +58,6 @@ fi
 alias fcd='cd "$(fd --type d --hidden --exclude ".*" . | fzf)"'
 alias fnvim='nvim "$(fd --type f --hidden --exclude ".*" . | fzf)"'
 
-# ─── Kanata ─────────────────────────────────────────────────────────────────
-
-if [[ "$OSTYPE" == darwin* ]]; then
-    kanata_on() {
-        sudo launchctl bootstrap system /Library/LaunchDaemons/com.jknafou.vhid-daemon.plist 2>/dev/null || true
-        sudo launchctl bootstrap system /Library/LaunchDaemons/com.jknafou.kanata.plist 2>/dev/null || true
-        sudo launchctl kickstart -k system/com.jknafou.kanata 2>/dev/null || true
-        echo "kanata started"
-    }
-
-    kanata_off() {
-        sudo launchctl bootout system/com.jknafou.kanata 2>/dev/null || true
-        sudo pkill -x kanata 2>/dev/null || true
-        echo "kanata stopped"
-    }
-fi
 
 # ─── Local overrides ────────────────────────────────────────────────────────
 
