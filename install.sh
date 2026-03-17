@@ -790,7 +790,9 @@ if $INSTALL_KANATA; then
 
         if $SHARED_MAC; then
             # ── Shared Mac: kanata_on at login, kanata_off at logout ──────
-            sudo launchctl disable system/com.jknafou.kanata 2>/dev/null || true
+            # Don't bootstrap or disable — just leave the plist installed.
+            # kanata_on will bootstrap on demand; not bootstrapping here
+            # means kanata won't auto-start at boot.
 
             # LaunchAgent: run kanata_on when the installing user logs in
             LOGIN_AGENT_DST="$HOME/Library/LaunchAgents/com.jknafou.kanata-login.plist"
