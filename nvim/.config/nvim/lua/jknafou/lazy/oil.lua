@@ -8,6 +8,9 @@ return {
 			-- See :help oil-config for a complete list of options
 			-- See :help oil.setup()
 			-- See :help oil-filetype
+			keymaps = {
+				["<C-h>"] = false, -- free for vim-tmux-navigator
+			},
 			view_options = {
 				-- Show files and directories that start with "."
 				show_hidden = true,

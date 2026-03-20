@@ -583,11 +583,10 @@ nvim-sync-back() {
     echo "Synced nvim data back to home"
 }
 
-if [ ! -d "$NVIM_LOCAL/share/nvim/lazy" ]; then
-    nvim-sync 2>/dev/null
-fi
-
 nvim() {
+    if [ ! -d "$NVIM_LOCAL/share/nvim/lazy" ]; then
+        nvim-sync
+    fi
     XDG_DATA_HOME="$NVIM_LOCAL/share" \
     XDG_STATE_HOME="$NVIM_LOCAL/state" \
     XDG_CACHE_HOME="$NVIM_LOCAL/cache" \
