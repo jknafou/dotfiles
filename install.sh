@@ -370,10 +370,14 @@ hpc_install_rg() {
 
 hpc_install_fzf() {
     if command -v fzf &>/dev/null; then return 0; fi
-    info "Installing fzf (HPC)..."
-    git clone --depth 1 https://github.com/junegunn/fzf.git "$HOME/.fzf"
-    "$HOME/.fzf/install" --bin
-    ln -sf "$HOME/.fzf/bin/fzf" "$LOCAL_BIN/fzf"
+    info "Installing fzf from GitHub release (HPC)..."
+    local tmp
+    tmp=$(mktemp -d)
+    local version
+    version=$(curl -sI https://github.com/junegunn/fzf/releases/latest | grep -i '^location:' | grep -oP '[\d.]+$' | head -1)
+    curl -sL "https://github.com/junegunn/fzf/releases/download/v${version}/fzf-${version}-linux_amd64.tar.gz" | tar xz -C "$tmp"
+    cp "$tmp/fzf" "$LOCAL_BIN/"
+    rm -rf "$tmp"
 }
 
 hpc_install_starship() {
@@ -591,6 +595,31 @@ nvim() {
     XDG_STATE_HOME="$NVIM_LOCAL/state" \
     XDG_CACHE_HOME="$NVIM_LOCAL/cache" \
     command nvim "$@"
+}
+
+# ─── Slurm usage / billing ──────────────────────────────────────────────────
+slurm-usage() {
+    local start="${1:-2025-11-01}"
+    local rate=0.0157
+    local credit_per_hour=$((2 * 211))
+    ug_slurm_usage_per_user --pi ruch --report-type account --all-users --aggregate --start "$start" | awk -v rate="$rate" -v cph="$credit_per_hour" '
+    BEGIN {
+      credit = cph * 24 * 365 * 0.6
+      printf "%-12s %10s %10s\n", "User", "CPUh", "CHF"
+      printf "%-12s %10s %10s\n", "------------", "----------", "----------"
+    }
+    /^[a-z]/ {
+      used = $2 + 0
+      if (used > 0) { printf "%-12s %10d %10.2f\n", $1, used, used * rate; total += used }
+    }
+    END {
+      billable = (total > credit) ? total - credit : 0
+      printf "%-12s %10s %10s\n", "------------", "----------", "----------"
+      printf "%-12s %10d %10.2f\n", "Usage", total, total * rate
+      printf "%-12s %10d %10.2f\n", "Credit", -credit, -credit * rate
+      printf "%-12s %10s %10s\n", "============", "==========", "=========="
+      printf "%-12s %10d %10.2f\n", "TO PAY", billable, billable * rate
+    }'
 }
 ZSHLOCAL
         success "Created ~/.zshrc.local"

@@ -55,7 +55,6 @@ fi
 
 # fzf
 if command -v fzf &>/dev/null; then
-    [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
     source <(fzf --zsh)
 fi
 
