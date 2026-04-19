@@ -490,8 +490,8 @@ if $INSTALL_TERMINAL; then
         hpc_install_fd
         hpc_install_rg
         hpc_install_starship
-        # pyenv via official installer
-        if ! command -v pyenv &>/dev/null; then
+        # pyenv via official installer (not in PATH during install, so check dir)
+        if [ ! -d "$HOME/.pyenv" ]; then
             info "Installing pyenv (HPC)..."
             curl -sS https://pyenv.run | bash
         fi
