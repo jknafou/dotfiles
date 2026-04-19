@@ -344,13 +344,18 @@ hpc_install_nvim() {
     rm -rf "$tmp"
 }
 
+# Resolve the tag name from a GitHub /releases/latest redirect (e.g. "v0.71.0")
+hpc_latest_tag() {
+    curl -sI "$1" | tr -d '\r' | grep -i '^location:' | grep -oP 'tag/\K[^ ]+' | head -1
+}
+
 hpc_install_fd() {
     if command -v fd &>/dev/null; then return 0; fi
     info "Installing fd from GitHub release (HPC)..."
-    local tmp
+    local tmp version
     tmp=$(mktemp -d)
-    local version
-    version=$(curl -sI https://github.com/sharkdp/fd/releases/latest | grep -i '^location:' | grep -oP 'v[\d.]+' | head -1)
+    version=$(hpc_latest_tag https://github.com/sharkdp/fd/releases/latest)
+    [ -n "$version" ] || { warn "Could not resolve fd version"; rm -rf "$tmp"; return 1; }
     curl -sL "https://github.com/sharkdp/fd/releases/download/${version}/fd-${version}-x86_64-unknown-linux-musl.tar.gz" | tar xz -C "$tmp"
     cp "$tmp"/fd-*/fd "$LOCAL_BIN/"
     rm -rf "$tmp"
@@ -359,10 +364,10 @@ hpc_install_fd() {
 hpc_install_rg() {
     if command -v rg &>/dev/null; then return 0; fi
     info "Installing ripgrep from GitHub release (HPC)..."
-    local tmp
+    local tmp version
     tmp=$(mktemp -d)
-    local version
-    version=$(curl -sI https://github.com/BurntSushi/ripgrep/releases/latest | grep -i '^location:' | grep -oP '[\d.]+$' | head -1)
+    version=$(hpc_latest_tag https://github.com/BurntSushi/ripgrep/releases/latest)
+    [ -n "$version" ] || { warn "Could not resolve ripgrep version"; rm -rf "$tmp"; return 1; }
     curl -sL "https://github.com/BurntSushi/ripgrep/releases/download/${version}/ripgrep-${version}-x86_64-unknown-linux-musl.tar.gz" | tar xz -C "$tmp"
     cp "$tmp"/ripgrep-*/rg "$LOCAL_BIN/"
     rm -rf "$tmp"
@@ -371,11 +376,12 @@ hpc_install_rg() {
 hpc_install_fzf() {
     if command -v fzf &>/dev/null; then return 0; fi
     info "Installing fzf from GitHub release (HPC)..."
-    local tmp
+    local tmp tag version
     tmp=$(mktemp -d)
-    local version
-    version=$(curl -sI https://github.com/junegunn/fzf/releases/latest | grep -i '^location:' | grep -oP '[\d.]+$' | head -1)
-    curl -sL "https://github.com/junegunn/fzf/releases/download/v${version}/fzf-${version}-linux_amd64.tar.gz" | tar xz -C "$tmp"
+    tag=$(hpc_latest_tag https://github.com/junegunn/fzf/releases/latest)
+    version="${tag#v}"
+    [ -n "$version" ] || { warn "Could not resolve fzf version"; rm -rf "$tmp"; return 1; }
+    curl -sL "https://github.com/junegunn/fzf/releases/download/${tag}/fzf-${version}-linux_amd64.tar.gz" | tar xz -C "$tmp"
     cp "$tmp/fzf" "$LOCAL_BIN/"
     rm -rf "$tmp"
 }
