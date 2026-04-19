@@ -631,6 +631,19 @@ ZSHLOCAL
         success "Created ~/.zshrc.local"
     fi
 
+    # HPC: chsh is often LDAP-blocked, so auto-exec zsh from ~/.bash_profile on
+    # interactive login. Without this, tmux inherits $SHELL=/bin/bash and opens
+    # bash panes instead of our configured zsh.
+    if $HPC_MODE && ! grep -qF 'dotfiles installer (--hpc)' "$HOME/.bash_profile" 2>/dev/null; then
+        info "Adding zsh auto-exec to ~/.bash_profile..."
+        cat >> "$HOME/.bash_profile" <<'BPROFILE'
+
+# Auto-exec zsh on interactive login — added by dotfiles installer (--hpc)
+[ -z "$ZSH_VERSION" ] && [[ $- == *i* ]] && command -v zsh >/dev/null && exec zsh -l
+BPROFILE
+        success "Added zsh auto-exec to ~/.bash_profile (takes effect next login)"
+    fi
+
     success "Terminal ready"
 fi
 
