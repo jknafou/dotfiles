@@ -1,19 +1,22 @@
 return {
 	"roxma/vim-tmux-clipboard",
 	config = function()
-		-- Enable tmux clipboard integration
-		vim.g.clipboard = {
-			name = "tmux",
-			copy = {
-				["+"] = {"tmux", "load-buffer", "-"},
-				["*"] = {"tmux", "load-buffer", "-"},
-			},
-			paste = {
-				["+"] = {"tmux", "save-buffer", "-"},
-				["*"] = {"tmux", "save-buffer", "-"},
-			},
-			cache_enabled = 1,
-		}
+		-- Only route the clipboard through tmux when inside a tmux session.
+		-- Outside tmux, fall back to nvim's default provider (pbcopy/pbpaste on macOS).
+		if vim.env.TMUX then
+			vim.g.clipboard = {
+				name = "tmux",
+				copy = {
+					["+"] = {"tmux", "load-buffer", "-"},
+					["*"] = {"tmux", "load-buffer", "-"},
+				},
+				paste = {
+					["+"] = {"tmux", "save-buffer", "-"},
+					["*"] = {"tmux", "save-buffer", "-"},
+				},
+				cache_enabled = 1,
+			}
+		end
 
 		-- Enhanced keymaps for tmux clipboard integration
 		-- Copy to tmux buffer and system clipboard
