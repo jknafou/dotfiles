@@ -392,6 +392,19 @@ hpc_install_starship() {
     curl -sS https://starship.rs/install.sh | sh -s -- -y --bin-dir "$LOCAL_BIN"
 }
 
+hpc_install_gh() {
+    if command -v gh &>/dev/null; then return 0; fi
+    info "Installing gh from GitHub release (HPC)..."
+    local tmp tag version
+    tmp=$(mktemp -d)
+    tag=$(hpc_latest_tag https://github.com/cli/cli/releases/latest)
+    version="${tag#v}"
+    [ -n "$version" ] || { warn "Could not resolve gh version"; rm -rf "$tmp"; return 1; }
+    curl -sL "https://github.com/cli/cli/releases/download/${tag}/gh_${version}_linux_amd64.tar.gz" | tar xz -C "$tmp"
+    cp "$tmp"/gh_*/bin/gh "$LOCAL_BIN/"
+    rm -rf "$tmp"
+}
+
 # ─── Package manager ────────────────────────────────────────────────────────
 
 if $HPC_MODE; then
@@ -490,6 +503,7 @@ if $INSTALL_TERMINAL; then
         hpc_install_fd
         hpc_install_rg
         hpc_install_starship
+        hpc_install_gh
         # pyenv via official installer (not in PATH during install, so check dir)
         if [ ! -d "$HOME/.pyenv" ]; then
             info "Installing pyenv (HPC)..."
